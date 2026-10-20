@@ -374,7 +374,7 @@ BODY = [
 ('p',
  'All measurements were taken on an Intel Core i9-7900X (Skylake-X, AVX-512), its ten cores at a fixed 3.3 GHz '
  'with turbo boost and hyper-threading disabled, with dinara-align compiled by Mojo 1.1.0 [@Modular] at commit '
- "`87d365f` and every tool compiled for the native instruction set except BSAlign's gap-affine kernel, which its "
+ "`7fb47d5` (the other tools four days before, alongside commit `87d365f`, on the same builds and samples) and every tool compiled for the native instruction set except BSAlign's gap-affine kernel, which its "
  'own build keeps to SSE4.2. We combined the protocols of A*PA2 [@GrootKoerkamp2024b] and QuickEd [@Doblas2025].'),
 ('p',
  "The real datasets come from both. From A*PA2's release [@PaBench] we use the nanopore sets ont-1k, ont-10k, "
