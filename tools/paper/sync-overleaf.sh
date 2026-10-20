@@ -53,7 +53,7 @@ if [ "$(git rev-parse "$project^{tree}")" = "$tree" ]; then
     echo "Overleaf already has paper/ as at $(git rev-parse --short HEAD)."
     exit 0
 fi
-commit=$(git commit-tree "$tree" -p "$project" -m "dinara-align $(git rev-parse --short HEAD): $(git log -1 --format=%s)")
+commit=$(git commit-tree "$tree" -p "$project" -m "karan $(git rev-parse --short HEAD): $(git log -1 --format=%s)")
 git push --quiet overleaf "$commit:refs/heads/$branch"
 git update-ref refs/overleaf/pushed "$commit"
 echo "Overleaf now has paper/ as at $(git rev-parse --short HEAD)."

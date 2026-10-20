@@ -16,7 +16,7 @@ it and the run exits nonzero.
 from std.random import random_float64, random_ui64, seed
 from std.sys import argv
 
-from dinara_align import (
+from karan import (
     DEFAULT_MAX_MEMORY,
     Alignment,
     AlignmentError,

@@ -102,7 +102,7 @@ Copies the consolidation of 2026-10-08 left separate, and why.
 
 Each measured on the Skylake-X with `profile.py compare` and `regret`; none kept.
 
-- [-] **Aiming the band's first bound at the search's own projection** (`-D DINARA_FORCE=aim-search` still
+- [-] **Aiming the band's first bound at the search's own projection** (`-D KARAN_FORCE=aim-search` still
   times it). The two-ended search's projection, from every edit it reached, lies far closer to the
   distance than the one front's from 8 edits (median 0.98 against 0.85 of it on 10 kbp pairs at 10%,
   1.5 against 3.9 on ont-10k), and forced on every pair it saved 3 to 8% on most sets, but cost 4% on
@@ -217,7 +217,7 @@ Ideas from the work the paper cites, each checked (2026-10-10, M2 unless noted).
   bits. Not built.
 - [-] **A striped bit-parallel layout** (BSAlign, Shao and Ruan 2024), which might take the lane
   rotation off each column's chain. Its edit-distance mode is described only in its supplement; it
-  reports 2.1 times Edlib's speed over 1 to 100 kbp, where dinara-align's unit-cost engine runs 6.7
+  reports 2.1 times Edlib's speed over 1 to 100 kbp, where karan's unit-cost engine runs 6.7
   times Edlib's speed on ont-10k and 22 times on 100 kbp pairs at 15%. A striped layout also needs a
   correction pass for the bits crossing between segments, each column, the chain it means to shorten.
   A*PA2 weighed it and left it too. Not built.
@@ -229,15 +229,15 @@ Ideas from the work the paper cites, each checked (2026-10-10, M2 unless noted).
   band's word-columns on genvar and 7% on ont-500k with the bound free; see "An upper bound on the
   distance" below. Sassy and Sassy2 (Beeloo and Groot Koerkamp, 2025 to 2026): bit-vectors along the text,
   four text chunks in the SIMD lanes, stopping once every cell passes k; for searching patterns up to
-  about 1,000 bp in long texts, a search mode dinara-align does not have. TALCO (Walia et al., HPCA 2024)
+  about 1,000 bp in long texts, a search mode karan does not have. TALCO (Walia et al., HPCA 2024)
   and miniwfa (Li) save traceback memory, not time; the GPU, FPGA and in-memory designs (WFA-GPU,
   eWFA, GeneTEK, Scrooge, GenASM, RAPIDx) carry no idea to the CPU paths beyond what is here. Nothing
   promised a gain past the builds' noise. Left.
 - [ ] **Short patterns in long texts, the text split across lanes** (Sassy, Beeloo and Groot Koerkamp,
-  Bioinformatics 2026). Sassy itself is slower here than dinara-align's infix (M2, search only): a 1
+  Bioinformatics 2026). Sassy itself is slower here than karan's infix (M2, search only): a 1
   kbp read at 10% in 3 kbp 204 µs with k doubling and 121 with k given, against 80; a 10 kbp read at 5%
   in 30 kbp 13.4 and 7.8 ms against 1.8. Its speed is a small k: given the distance, a 30 bp pattern
-  at 5% in 100 kbp takes 68 µs and a 100 bp one in 10 kbp 12, where dinara-align takes 667 and 97, and
+  at 5% in 100 kbp takes 68 µs and a 100 bp one in 10 kbp 12, where karan takes 667 and 97, and
   with k doubled from 64 Sassy takes 775 and 99. A pattern of one word runs the infix sweep's scalar
   last-word step a column at a time, about 6.7 ns a column. Sassy's idea that carries over: the same
   pattern word in every lane, each lane a stretch of the text overlapping the next by twice the
@@ -250,7 +250,7 @@ Ideas from the work the paper cites, each checked (2026-10-10, M2 unless noted).
   is 1.5% of a SARS-CoV-2 alignment and does not show on the 1 kbp reads (perf, Skylake-X), so packing has
   nothing to win; its banded mode is a fixed threshold, 3 to 10% less accurate. BSAlign's striped sweep
   with an active F loop claims 2 times other SIMD aligners; measured since as a benchmark column, its
-  affine alignment 3 to 4.6 times slower than dinara-align's on the ONT sets and its edit distance 5 to 170
+  affine alignment 3 to 4.6 times slower than karan's on the ONT sets and its edit distance 5 to 170
   times. FILTR (2026) chooses a wavefront or an
   anti-diagonal schedule by divergence, as the quarter-matrix rule does; Medlib's (2025) threshold mode
   is `max_cost`'s early stop; hashed longest-common-extension queries (Ding et al., ESA 2023) are
@@ -281,7 +281,7 @@ the difference sweep's case (2026-10-10, Skylake-X).
 
 ## From A*PA2's discussion
 
-Its limitations and future work (curiouscoding.nl/posts/astarpa2/#discussion), and where dinara-align
+Its limitations and future work (curiouscoding.nl/posts/astarpa2/#discussion), and where karan
 stands on each.
 
 - [ ] **The infix and prefix searches' first bound and seeds.** At unit costs they sweep a band as Edlib
@@ -298,7 +298,7 @@ stands on each.
   the tile edges and the seeds' layers together: the diagonal transition's fronts are gone by then,
   as Mojo destroys a value after its last use, and the moves copied reversed to write a CIGAR come
   after the edges are freed, so writing them in place left the peak where it was.
-- [-] **A\* on the diagonal transition** at low divergence. dinara-align runs a plain diagonal
+- [-] **A\* on the diagonal transition** at low divergence. karan runs a plain diagonal
   transition first and falls back to the band; it is fast below 2% but uses no heuristic there.
   Tried and left (2026-10-09, M2): a front trimmed at both ends wherever its score plus the exact
   seeds' heuristic at its furthest cell passes a bound, the bound from the origin's heuristic

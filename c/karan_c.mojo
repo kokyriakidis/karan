@@ -1,15 +1,15 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The C API of dinara-align: the least cost of aligning a query to a reference, and an optimal alignment
+The C API of karan: the least cost of aligning a query to a reference, and an optimal alignment
 as a CIGAR, under any `Costs` and `Mode`, for C, C++ and any language with a C foreign-function
-interface. `dinara.h` declares these, with a C++ wrapper.
+interface. `karan.h` declares these, with a C++ wrapper.
 
-    pixi run build-c [target-cpu]   # build/c: libdinara, its runtime libraries and the header
+    pixi run build-c [target-cpu]   # build/c: libkaran, its runtime libraries and the header
 
 Each function takes the two sequences as bytes and lengths, and the costs, the mode and the options as
 structs of 64-bit integers, any of them null for its default. It holds nothing between calls, so may
-be called from many threads at once, and reports failure as a negative result (`DINARA_*` in the
+be called from many threads at once, and reports failure as a negative result (`KARAN_*` in the
 header).
 """
 
@@ -18,7 +18,7 @@ from std.ffi import c_int, c_size_t, external_call
 from std.sys import align_of, size_of
 
 
-from dinara_align import (
+from karan import (
     DEFAULT_MAX_MEMORY,
     Alignment,
     AlignmentError,
@@ -35,7 +35,7 @@ from dinara_align import (
     score,
     search,
 )
-from dinara_align.api import (
+from karan.api import (
     aligned,
     aligned_within,
     alignment_from_lanes,
@@ -45,10 +45,10 @@ from dinara_align.api import (
     each_pair,
     longest_first,
 )
-from dinara_align.cigar import text_of
-from dinara_align.common import FIRST_SENTINEL, spread
-from dinara_align.gap_affine import KEPT_BYTES, Penalties, SearchSpace, cigar_of, penalties_of
-from dinara_align.lanes import LaneCosts, Texts, lane_alignments, lane_distances, lane_free_alignments
+from karan.cigar import text_of
+from karan.common import FIRST_SENTINEL, spread
+from karan.gap_affine import KEPT_BYTES, Penalties, SearchSpace, cigar_of, penalties_of
+from karan.lanes import LaneCosts, Texts, lane_alignments, lane_distances, lane_free_alignments
 
 comptime UNSUPPORTED_SYMBOLS = -1
 """A 0xFE or 0xFF byte, which the wavefront's sentinels are and UTF-8 never holds."""
@@ -68,11 +68,11 @@ comptime INVALID_LENGTH = -7
 """A sequence of fewer than no letters."""
 
 comptime C_ENDS_FREE = 0
-"""`DINARA_ENDS_FREE`: a `dinara_mode`'s kind for free ends, global among them."""
+"""`KARAN_ENDS_FREE`: a `karan_mode`'s kind for free ends, global among them."""
 comptime C_EXTENSION = 1
-"""`DINARA_EXTENSION`: a `dinara_mode`'s kind for an extension from one end."""
+"""`KARAN_EXTENSION`: a `karan_mode`'s kind for an extension from one end."""
 comptime C_LOCAL = 2
-"""`DINARA_LOCAL`: a `dinara_mode`'s kind for a local alignment."""
+"""`KARAN_LOCAL`: a `karan_mode`'s kind for a local alignment."""
 
 comptime CInts = ImmPointer[Int, MutAnyOrigin]
 """A C struct of `int64_t` fields, read by index; null for the default."""
@@ -109,7 +109,7 @@ def pair_code(
 
 
 def costs_of(fields: OptionalPointer[Int, MutAnyOrigin]) raises AlignmentError -> Costs:
-    """`dinara_costs`: mismatch, opening, extension, opening2, extension2, a negative opening2 for one
+    """`karan_costs`: mismatch, opening, extension, opening2, extension2, a negative opening2 for one
     piece, then a deletion's four, none with its extension zero. Null is unit costs."""
     if not fields:
         return Costs.edit()
@@ -128,7 +128,7 @@ def costs_of(fields: OptionalPointer[Int, MutAnyOrigin]) raises AlignmentError -
 
 
 def mode_of(fields: OptionalPointer[Int, MutAnyOrigin]) raises AlignmentError -> Mode:
-    """`dinara_mode`: kind, the four free letter counts, the match score, the anchor, and the Z-drop and
+    """`karan_mode`: kind, the four free letter counts, the match score, the anchor, and the Z-drop and
     the end bonus, each none unless above zero. Null is global.
     Free ends with a match score of zero minimize the costs; above zero they maximize the score."""
     if not fields:
@@ -153,7 +153,7 @@ def mode_of(fields: OptionalPointer[Int, MutAnyOrigin]) raises AlignmentError ->
 
 @fieldwise_init
 struct Options(ImplicitlyCopyable):
-    """`dinara_options`: the band's two edges, the cost cap, `eqx`, `right_ties` and the memory for
+    """`karan_options`: the band's two edges, the cost cap, `eqx`, `right_ties` and the memory for
     kept fronts. Null is no band, no cap, `=` and `X`, indels placed left, and the default memory."""
 
     var band: Band
@@ -164,7 +164,7 @@ struct Options(ImplicitlyCopyable):
 
 
 def options_of(fields: OptionalPointer[Int, MutAnyOrigin]) -> Options:
-    """The `Options` a `dinara_options` asks for: a negative cap for none, and the default memory for zero or
+    """The `Options` a `karan_options` asks for: a negative cap for none, and the default memory for zero or
     less."""
     if not fields:
         return Options(Band(), -1, True, Ties.LEFT, DEFAULT_MAX_MEMORY)
@@ -199,7 +199,7 @@ def distance_code(
     asked: Options,
     mut space: SearchSpace,
 ) -> Int:
-    """One pair's least cost, or its code (see `dinara_distance`), through `space`'s searches."""
+    """One pair's least cost, or its code (see `karan_distance`), through `space`'s searches."""
     var refused = pair_code(reference, reference_length, query, query_length)
     if refused != 0:
         return refused
@@ -227,7 +227,7 @@ def align_into(
     alignment: MutPointer[Int, MutAnyOrigin],
     mut space: SearchSpace,
 ) -> Int:
-    """One pair's optimal alignment into `alignment`, zero, or its code (see `dinara_align`), through
+    """One pair's optimal alignment into `alignment`, zero, or its code (see `karan_align`), through
     `space`'s searches, which a batch's worker keeps from pair to pair."""
     var refused = pair_code(reference, reference_length, query, query_length)
     if refused != 0:
@@ -260,7 +260,7 @@ def align_into(
 
 
 def written(result: Alignment, alignment: MutPointer[Int, MutAnyOrigin]) -> Int:
-    """`result` into `alignment`, a `dinara_alignment`, its CIGAR copied for C; zero, or `OUT_OF_MEMORY`."""
+    """`result` into `alignment`, a `karan_alignment`, its CIGAR copied for C; zero, or `OUT_OF_MEMORY`."""
     var text = copied(result.cigar)
     if not text:
         return OUT_OF_MEMORY
@@ -276,11 +276,11 @@ def written(result: Alignment, alignment: MutPointer[Int, MutAnyOrigin]) -> Int:
 
 
 comptime ALIGNMENT_FIELDS = 8
-"""`int64_t`s a `dinara_alignment` spans, its CIGAR's pointer one of them."""
+"""`int64_t`s a `karan_alignment` spans, its CIGAR's pointer one of them."""
 
 
-@export("dinara_distance")
-def dinara_distance(
+@export("karan_distance")
+def karan_distance(
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
     query: ImmPointer[UInt8, MutAnyOrigin],
@@ -308,8 +308,8 @@ def dinara_distance(
         return failure(error)
 
 
-@export("dinara_align")
-def dinara_align(
+@export("karan_align")
+def karan_align(
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
     query: ImmPointer[UInt8, MutAnyOrigin],
@@ -320,9 +320,9 @@ def dinara_align(
     alignment: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
     """An optimal alignment of the query to the reference (see `align`) into `alignment`, a
-    `dinara_alignment`: its cost, score, the reference's and the query's aligned spans, and the CIGAR,
+    `karan_alignment`: its cost, score, the reference's and the query's aligned spans, and the CIGAR,
     NUL-terminated, in memory from C's `malloc` as its length is known only once the alignment is, which
-    the caller frees with `dinara_free`. Returns zero, or a negative code, and then no CIGAR."""
+    the caller frees with `karan_free`. Returns zero, or a negative code, and then no CIGAR."""
     try:
         var space = SearchSpace()
         return align_into(
@@ -340,10 +340,10 @@ def dinara_align(
         return failure(error)
 
 
-@export("dinara_aligner_new")
-def dinara_aligner_new() abi("C") -> OptionalPointer[SearchSpace, MutAnyOrigin]:
+@export("karan_aligner_new")
+def karan_aligner_new() abi("C") -> OptionalPointer[SearchSpace, MutAnyOrigin]:
     """One thread's aligner, its searches' memory kept from call to call, in memory from C's `posix_memalign`,
-    for `dinara_aligner_free`; null when there is none to be had. It keeps nothing a call depends on, so it
+    for `karan_aligner_free`; null when there is none to be had. It keeps nothing a call depends on, so it
     gives the same answers as the functions without one, and it is never shared between threads."""
     # Aligned as the type asks, 32 bytes for its SIMD fields, where `malloc` promises 16.
     var place = OptionalPointer[SearchSpace, MutAnyOrigin]()
@@ -355,16 +355,16 @@ def dinara_aligner_new() abi("C") -> OptionalPointer[SearchSpace, MutAnyOrigin]:
     return place
 
 
-@export("dinara_aligner_free")
-def dinara_aligner_free(aligner: OptionalPointer[SearchSpace, MutAnyOrigin]) abi("C"):
-    """Frees an aligner `dinara_aligner_new` made, and the memory it kept; null is nothing to free."""
+@export("karan_aligner_free")
+def karan_aligner_free(aligner: OptionalPointer[SearchSpace, MutAnyOrigin]) abi("C"):
+    """Frees an aligner `karan_aligner_new` made, and the memory it kept; null is nothing to free."""
     if aligner:
         _ = aligner.value().unsafe_take_pointee()
         external_call["free", NoneType](aligner)
 
 
-@export("dinara_aligner_distance")
-def dinara_aligner_distance(
+@export("karan_aligner_distance")
+def karan_aligner_distance(
     aligner: MutPointer[SearchSpace, MutAnyOrigin],
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
@@ -374,7 +374,7 @@ def dinara_aligner_distance(
     mode: OptionalPointer[Int, MutAnyOrigin],
     options: OptionalPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
-    """`dinara_distance` through `aligner`'s memory."""
+    """`karan_distance` through `aligner`'s memory."""
     try:
         return distance_code(
             reference,
@@ -390,8 +390,8 @@ def dinara_aligner_distance(
         return failure(error)
 
 
-@export("dinara_aligner_align")
-def dinara_aligner_align(
+@export("karan_aligner_align")
+def karan_aligner_align(
     aligner: MutPointer[SearchSpace, MutAnyOrigin],
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
@@ -402,7 +402,7 @@ def dinara_aligner_align(
     options: OptionalPointer[Int, MutAnyOrigin],
     alignment: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
-    """`dinara_align` through `aligner`'s memory."""
+    """`karan_align` through `aligner`'s memory."""
     try:
         return align_into(
             reference,
@@ -419,8 +419,8 @@ def dinara_aligner_align(
         return failure(error)
 
 
-@export("dinara_score")
-def dinara_score(
+@export("karan_score")
+def karan_score(
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
     query: ImmPointer[UInt8, MutAnyOrigin],
@@ -430,7 +430,7 @@ def dinara_score(
     options: OptionalPointer[Int, MutAnyOrigin],
     found: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
-    """The best score `dinara_align` would return, with no alignment traced (see `score`), into
+    """The best score `karan_align` would return, with no alignment traced (see `score`), into
     `found`: zero, or a negative code."""
     var refused = pair_code(reference, reference_length, query, query_length)
     if refused != 0:
@@ -449,8 +449,8 @@ def dinara_score(
         return failure(error)
 
 
-@export("dinara_local_scores")
-def dinara_local_scores(
+@export("karan_local_scores")
+def karan_local_scores(
     reference: ImmPointer[UInt8, MutAnyOrigin],
     reference_length: Int,
     query: ImmPointer[UInt8, MutAnyOrigin],
@@ -461,7 +461,7 @@ def dinara_local_scores(
     found: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
     """A local alignment's best score, its end and SSW's second best (see `local_scores`) into
-    `found`, a `dinara_local_scores_result`: zero, or a negative code."""
+    `found`, a `karan_local_scores_result`: zero, or a negative code."""
     var refused = pair_code(reference, reference_length, query, query_length)
     if refused != 0:
         return refused
@@ -556,8 +556,8 @@ def refused_pairs(
     return refused^
 
 
-@export("dinara_distances")
-def dinara_distances(
+@export("karan_distances")
+def karan_distances(
     pairs: Int,
     references: CSequences,
     reference_lengths: CInts,
@@ -569,7 +569,7 @@ def dinara_distances(
     threads: Int,
     results: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
-    """Every pair's `dinara_distance` into `results`, each its least cost or its own code, the pairs
+    """Every pair's `karan_distance` into `results`, each its least cost or its own code, the pairs
     spread over `threads` threads; zero, or a code that fails them all, and then no result written."""
     var wanted_costs: Costs
     var wanted_mode: Mode
@@ -616,7 +616,7 @@ def distances_part(
     asked: Options,
     results: MutPointer[Int, MutAnyOrigin],
 ):
-    """`dinara_distances` of `pairs` pairs on the caller's thread alone."""
+    """`karan_distances` of `pairs` pairs on the caller's thread alone."""
     var workers = 1
     # As `distances` sends them (see `api.distances_in_lanes`): the lanes first, every pair whose bytes the library
     # takes; a pair it refuses, and every pair of costs it refuses, one at a time for its own code, the longest
@@ -668,8 +668,8 @@ def distances_part(
     each_pair(one, longest_first(pairs, reference_texts, query_texts, workers), workers)
 
 
-@export("dinara_alignments")
-def dinara_alignments(
+@export("karan_alignments")
+def karan_alignments(
     pairs: Int,
     references: CSequences,
     reference_lengths: CInts,
@@ -682,7 +682,7 @@ def dinara_alignments(
     alignments: MutPointer[Int, MutAnyOrigin],
     statuses: MutPointer[Int, MutAnyOrigin],
 ) abi("C") -> Int:
-    """Every pair's `dinara_align` into `alignments`, an array of `dinara_alignment`, and its result
+    """Every pair's `karan_align` into `alignments`, an array of `karan_alignment`, and its result
     into `statuses`: zero and a CIGAR to free, or the pair's code and none. The pairs spread over
     `threads` threads; returns zero, or a code that fails them all, and then nothing written."""
     var wanted_costs: Costs
@@ -740,7 +740,7 @@ def alignments_part(
     alignments: MutPointer[Int, MutAnyOrigin],
     statuses: MutPointer[Int, MutAnyOrigin],
 ):
-    """`dinara_alignments` of `pairs` pairs on the caller's thread alone."""
+    """`karan_alignments` of `pairs` pairs on the caller's thread alone."""
     var workers = 1
     # As `alignments` sends them (see `api.alignments_in_lanes`): the lanes first, every pair whose bytes the
     # library takes, each one's CIGAR spelled from their path; a pair the library refuses, every pair of costs it
@@ -820,9 +820,9 @@ def alignments_part(
 
 
 comptime DISTANCES = 0
-"""A `SharedBatch` of `dinara_distances`."""
+"""A `SharedBatch` of `karan_distances`."""
 comptime ALIGNMENTS = 1
-"""A `SharedBatch` of `dinara_alignments`."""
+"""A `SharedBatch` of `karan_alignments`."""
 
 comptime THREAD_STACK = 8 << 20
 """The stack a thread the library starts gets: a process's main thread's, where a platform's default for
@@ -1003,7 +1003,7 @@ def start_threads(entry: def(Raw) abi("C") thin -> Raw, argument: Raw, workers: 
 
 
 def copied(text: String) -> OptionalPointer[UInt8, MutAnyOrigin]:
-    """`text`, NUL-terminated, in memory from C's `malloc`, for the caller to free with `dinara_free`."""
+    """`text`, NUL-terminated, in memory from C's `malloc`, for the caller to free with `karan_free`."""
     var bytes = text.as_bytes()
     var copy = external_call["malloc", OptionalPointer[UInt8, MutAnyOrigin]](len(bytes) + 1)
     if not copy:
@@ -1015,15 +1015,15 @@ def copied(text: String) -> OptionalPointer[UInt8, MutAnyOrigin]:
     return copy
 
 
-@export("dinara_free")
-def dinara_free(text: OptionalPointer[UInt8, MutAnyOrigin]) abi("C"):
+@export("karan_free")
+def karan_free(text: OptionalPointer[UInt8, MutAnyOrigin]) abi("C"):
     """Frees a CIGAR a function here allocated, with the C library's `free` that matches its `malloc`;
     null is nothing to free."""
     external_call["free", NoneType](text)
 
 
-@export("dinara_search")
-def dinara_search(
+@export("karan_search")
+def karan_search(
     count: Int,
     references: CSequences,
     reference_lengths: CInts,
@@ -1041,7 +1041,7 @@ def dinara_search(
     `indices` and their scores into `scores`, each with room for `count`, and their number back, or a
     negative code. `best` above zero keeps that many; the options' cap drops what passes it. The
     references spread over `threads` threads the library starts itself (see `SharedSearch`). A band in the
-    options is refused, `DINARA_INVALID_MODE`."""
+    options is refused, `KARAN_INVALID_MODE`."""
     if count <= 0:
         return 0
     for index in range(count):
@@ -1114,7 +1114,7 @@ def dinara_search(
 
 
 struct SharedSearch(Movable):
-    """`dinara_search` dealt out as `SharedBatch` deals a batch: each chunk of the references searched on
+    """`karan_search` dealt out as `SharedBatch` deals a batch: each chunk of the references searched on
     its own, its hits kept for the merge, which ranks them as one search does; a chunk's best `best` hold
     every hit of the search's best."""
 

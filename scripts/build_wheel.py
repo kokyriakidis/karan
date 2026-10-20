@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Packs build/python/dinara_align (see `pixi run build-python`) into a wheel in build/dist, for `pip
+"""Packs build/python/karan (see `pixi run build-python`) into a wheel in build/dist, for `pip
 install`: the package's Python, its extension and the Mojo runtime libraries beside it.
 
     pixi run build-wheel
@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = ROOT / "build" / "python" / "dinara_align"
+PACKAGE = ROOT / "build" / "python" / "karan"
 DIST = ROOT / "build" / "dist"
 
 
@@ -43,28 +43,28 @@ def digest(data: bytes) -> str:
 
 def main() -> None:
     """Writes the wheel, its metadata and `RECORD` with it, and prints its path."""
-    if not (PACKAGE / "_dinara.so").exists():
+    if not (PACKAGE / "_karan.so").exists():
         sys.exit("build_wheel: run `pixi run build-python` first")
     project = tomllib.loads((ROOT / "pixi.toml").read_text())["workspace"]
     version = project["version"]
     tag = f"py3-none-{platform_tag()}"
-    info = f"dinara_align-{version}.dist-info"
+    info = f"karan-{version}.dist-info"
     metadata = "\n".join(
         [
             "Metadata-Version: 2.1",
-            "Name: dinara-align",
+            "Name: karan",
             f"Version: {version}",
             f"Summary: {project['description']}",
-            "Home-page: https://github.com/kokyriakidis/dinara-align",
+            "Home-page: https://github.com/kokyriakidis/karan",
             f"Author: {project['authors'][0]}",
             f"License: {project['license']}",
             "Requires-Python: >=3.9",
             "",
         ]
     )
-    wheel = f"Wheel-Version: 1.0\nGenerator: dinara-align build_wheel\nRoot-Is-Purelib: false\nTag: {tag}\n"
+    wheel = f"Wheel-Version: 1.0\nGenerator: karan build_wheel\nRoot-Is-Purelib: false\nTag: {tag}\n"
     DIST.mkdir(parents=True, exist_ok=True)
-    target = DIST / f"dinara_align-{version}-{tag}.whl"
+    target = DIST / f"karan-{version}-{tag}.whl"
     records = []
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(PACKAGE.iterdir()):
@@ -73,7 +73,7 @@ def main() -> None:
             if path.is_dir() or path.name in ("LICENSE", "NOTICE"):
                 continue
             data = path.read_bytes()
-            name = f"dinara_align/{path.name}"
+            name = f"karan/{path.name}"
             info_entry = zipfile.ZipInfo(name)
             # Libraries keep their execute bit, which the loader needs on some systems.
             info_entry.external_attr = (0o755 if path.suffix in (".so", ".dylib") else 0o644) << 16

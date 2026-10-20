@@ -17,7 +17,7 @@ alignment, and compare the device to the host pair by pair.
 from std.random import random_float64, random_ui64, seed
 from std.testing import TestSuite, assert_equal, assert_false, assert_raises, assert_true
 
-from dinara_align import (
+from karan import (
     Aligner,
     Alignment,
     AlignmentError,
@@ -38,7 +38,7 @@ from dinara_align import (
     scores,
     search,
 )
-from dinara_align.gotoh import (
+from karan.gotoh import (
     AffineGapCosts,
     AlignmentMode,
     GapRun,
@@ -48,20 +48,20 @@ from dinara_align.gotoh import (
     serial_align,
     vector_sweep_bands,
 )
-from dinara_align.scoring import DNA_ALPHABET, tabulated_end
-from dinara_align.vector_score import reach_back
-from dinara_align.cigar import cigar_runs
-from dinara_align.cigar import reversed_text as reversed_bytes
-from dinara_align.edit_distance import edit_distance as bit_parallel_distance
-from dinara_align.scored import ANYWHERE, best_end, end_of
-from dinara_align.seeds import SEED_COLUMNS, SeedHeuristic
-from dinara_align.diagonal import PROJECTION_ONLY, step_budget
-from dinara_align.edit_search import edit_search
-from dinara_align.cigar import text_of
-from dinara_align.bit_parallel import Profile
-from dinara_align.diagonal import DiagonalFronts, diagonal_transition, EDITS_PER_STEP, StepCost, trace_diagonals
-from dinara_align.traceback import EditPath, cigar_string
-from dinara_align.gap_affine import (
+from karan.scoring import DNA_ALPHABET, tabulated_end
+from karan.vector_score import reach_back
+from karan.cigar import cigar_runs
+from karan.cigar import reversed_text as reversed_bytes
+from karan.edit_distance import edit_distance as bit_parallel_distance
+from karan.scored import ANYWHERE, best_end, end_of
+from karan.seeds import SEED_COLUMNS, SeedHeuristic
+from karan.diagonal import PROJECTION_ONLY, step_budget
+from karan.edit_search import edit_search
+from karan.cigar import text_of
+from karan.bit_parallel import Profile
+from karan.diagonal import DiagonalFronts, diagonal_transition, EDITS_PER_STEP, StepCost, trace_diagonals
+from karan.traceback import EditPath, cigar_string
+from karan.gap_affine import (
     ALIGNED,
     EndsFree,
     extension_of,
@@ -79,8 +79,8 @@ from dinara_align.gap_affine import (
     wavefront_align,
     wavefront_penalties,
 )
-from dinara_align.substitutions import SubstitutionLookup
-from dinara_align.differences import difference_bits, swept_cost, swept_path
+from karan.substitutions import SubstitutionLookup
+from karan.differences import difference_bits, swept_cost, swept_path
 
 comptime GLOBAL = Mode.GLOBAL
 comptime LOCAL = Mode(Mode.SMITH_WATERMAN, 0, 0, 0, 0, 0, Anchor.START, -1, -1)

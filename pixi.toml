@@ -4,7 +4,7 @@ channels = ["conda-forge", "https://conda.modular.com/max"]
 description = "Exact pairwise sequence alignment in Mojo: edit distance after A*PA2, gap-affine and two-piece wavefront after BiWFA, local, semi-global and extension alignment, on CPU and GPU"
 license = "MPL-2.0"
 license-file = "LICENSE"
-name = "dinara-align"
+name = "karan"
 platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 readme = "README.md"
 version = "0.1.0"
@@ -18,7 +18,7 @@ mojo = ">=1.1.0,<2"
 # `mojo build -o` writes into a directory but will not create one.
 prepare = "mkdir -p build"
 # A precompiled package is tied to the compiler that wrote it, so it is a build artifact, not a release.
-build = {cmd = "mojo precompile dinara_align -o build/dinara_align.mojoc", depends-on = ["prepare"]}
+build = {cmd = "mojo precompile karan -o build/karan.mojoc", depends-on = ["prepare"]}
 # `$MOJO_ACCELERATOR` is empty by default, so the kernels target the host's own GPU. Set it to
 # `--target-accelerator <arch>` to target another.
 build-tests = {cmd = "mojo build -I . tests/test_alignment.mojo -o build/test_alignment $MOJO_ACCELERATOR", depends-on = ["prepare"]}
@@ -28,22 +28,22 @@ build-fuzz = {cmd = "mojo build -I . -I tests tests/fuzz.mojo -o build/fuzz $MOJ
 fuzz = {cmd = "./build/fuzz", depends-on = ["build-fuzz"]}
 # Holds every mode WFA2-lib also has to its regression set: its pairs, scores and CIGARs; see `scripts/test_wfa.py`.
 test-wfa = "python3 scripts/test_wfa.py"
-format = "mojo format -l 120 dinara_align tests c python cli"
+format = "mojo format -l 120 karan tests c python cli"
 # docs/API.md, the reference of everything the package exports, from its docstrings.
 api-docs = "python3 scripts/api_docs.py"
 # Pulls the latest Mojo skills from github.com/modular/skills into .claude/skills for coding agents.
 sync-skills = "bash .claude/sync-skills.sh"
-# Times dinara-align against every exact global aligner on A*PA2's real datasets and QuickEd's simulated ones,
+# Times karan against every exact global aligner on A*PA2's real datasets and QuickEd's simulated ones,
 # unit costs or `--affine x,o,e`; see `benchmarks/bench.py` for the flags.
 bench = "python3 benchmarks/bench.py"
-# Times dinara-align's free ends, extension, two-piece gaps, tables, local and overlap alignment against Edlib,
+# Times karan's free ends, extension, two-piece gaps, tables, local and overlap alignment against Edlib,
 # WFA2-lib, KSW2, parasail and SSW; see `benchmarks/modes_bench.py`.
 bench-modes = "python3 benchmarks/modes_bench.py"
 # Times batches of short-read global scores on every thread against WFA2-lib, KSW2, parasail and Edlib; see `benchmarks/batch_bench.py`.
 bench-batch = "python3 benchmarks/batch_bench.py"
-# Builds dinara-align with each technique switched off in turn and times every build alike; see `benchmarks/ablation.py`.
+# Builds karan with each technique switched off in turn and times every build alike; see `benchmarks/ablation.py`.
 bench-ablation = "python3 benchmarks/ablation.py"
-# Pinpoints where dinara-align's time goes and where a rival beats it: `pixi run profile duel|probes|perf|compare|all`;
+# Pinpoints where karan's time goes and where a rival beats it: `pixi run profile duel|probes|perf|compare|all`;
 # see `benchmarks/profile.py`.
 profile = "python3 benchmarks/profile.py"
 # Writes the paper, an Overleaf project in paper/, and its PDFs and HTML pages in build/paper/ from tools/paper/main_text.py
@@ -52,18 +52,18 @@ paper = "python3 tools/paper/render.py"
 paper-tables = "python3 tools/paper/tables.py"
 # Pushes the committed paper/ to the Overleaf project behind the `overleaf` remote; see tools/paper/sync-overleaf.sh.
 paper-sync = "bash tools/paper/sync-overleaf.sh"
-# Builds a program on dinara-align into a folder that runs without pixi or Mojo, for a baseline CPU:
+# Builds a program on karan into a folder that runs without pixi or Mojo, for a baseline CPU:
 # `pixi run bundle <program.mojo> [out-dir] [target-cpu]`; see `scripts/bundle.sh`.
 bundle = "bash scripts/bundle.sh"
-# The C API (c/dinara.h) as a shared library in build/c beside its runtime libraries: `pixi run build-c [target-cpu]`.
+# The C API (c/karan.h) as a shared library in build/c beside its runtime libraries: `pixi run build-c [target-cpu]`.
 build-c = "bash scripts/build_c.sh"
 # Builds the C API and runs its C++ test against it.
-test-c = { cmd = "c++ -std=c++17 -O2 -pthread -I build/c tests/test_c_api.cpp -L build/c -ldinara -Wl,-rpath,$PIXI_PROJECT_ROOT/build/c -o build/test_c_api && ./build/test_c_api", depends-on = ["build-c"] }
-# The command-line aligner in build/cli: `pixi run build-cli [target-cpu]`, then `build/cli/dinara-align --help`.
+test-c = { cmd = "c++ -std=c++17 -O2 -pthread -I build/c tests/test_c_api.cpp -L build/c -lkaran -Wl,-rpath,$PIXI_PROJECT_ROOT/build/c -o build/test_c_api && ./build/test_c_api", depends-on = ["build-c"] }
+# The command-line aligner in build/cli: `pixi run build-cli [target-cpu]`, then `build/cli/karan --help`.
 build-cli = "bash scripts/build_cli.sh"
 # Builds the command-line aligner and runs its tests against it.
 test-cli = { cmd = "bash tests/test_cli.sh", depends-on = ["build-cli"] }
-# The Python package (python/dinara_align) in build/python beside its runtime libraries: `pixi run build-python [target-cpu]`.
+# The Python package (python/karan) in build/python beside its runtime libraries: `pixi run build-python [target-cpu]`.
 build-python = "bash scripts/build_python.sh"
 # The Python package as a wheel in build/dist, for `pip install`.
 build-wheel = { cmd = "python3 scripts/build_wheel.py", depends-on = ["build-python"] }

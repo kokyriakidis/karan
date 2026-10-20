@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Times dinara-align against every exact global DNA aligner on the datasets of the two latest evaluations,
+"""Times karan against every exact global DNA aligner on the datasets of the two latest evaluations,
 A*PA2's and QuickEd's, and checks that every answer agrees.
 
     pixi run bench                       # unit costs, every dataset, 5 s per tool per dataset
@@ -34,12 +34,12 @@ The aligners are every exact one either evaluation compared: Edlib, BiWFA, WFA2-
 A*PA with the settings A*PA2's evaluation gave each kind of data, A*PA2-simple and A*PA2-full; on x86-64
 KSW2, QuickEd's bound-and-align and BSAlign's striped kernels with their band off, so exact. WFA, KSW2
 and BSAlign, whose memory grows with the matrix or the square of the distance, run under an 8 GB cap.
-At affine costs, the ones that take them: WFA, BiWFA, and on x86-64 KSW2 and BSAlign. dinara-align runs
+At affine costs, the ones that take them: WFA, BiWFA, and on x86-64 KSW2 and BSAlign. karan runs
 pair by pair, as the others do, and as a batch, every pair of the sample in one call on the same thread,
 whose column is a throughput rather than a latency.
 
 The rivals are pinned, so each runs on a sample once and its results are kept (see `harness.measure`); a
-rerun times dinara-align alone.
+rerun times karan alone.
 """
 
 import argparse
@@ -217,9 +217,9 @@ def sample(name: str, files: list[Path], bases: int, published: dict[str, list[i
 # region Tools
 
 
-def dinara(threads: str) -> str:
+def karan(threads: str) -> str:
     """The bit-parallel column's tool name, `threads` saying how it runs."""
-    return f"dinara-align (bit-parallel, {threads})"
+    return f"karan (bit-parallel, {threads})"
 
 
 def astarpa_settings(dataset: str) -> str:
@@ -277,8 +277,8 @@ def bsalign_runners() -> tuple[Path, Path] | None:
 def unit_tools(dataset: str, runners: dict) -> list[tuple[str, Path, str]]:
     """The columns at unit costs: each column's name, runner and the tool name it passes."""
     chosen = [
-        (dinara("1 thread"), runners["ours"], dinara("1 thread")),
-        (dinara("batch, 1 thread"), runners["ours"], dinara("batch, 1 thread")),
+        (karan("1 thread"), runners["ours"], karan("1 thread")),
+        (karan("batch, 1 thread"), runners["ours"], karan("batch, 1 thread")),
         ("a*pa2-full", runners["astarpa"], "a*pa2-full"),
         ("a*pa2-simple", runners["astarpa"], "a*pa2-simple"),
         ("a*pa", runners["astarpa"], astarpa_settings(dataset)),
@@ -298,9 +298,9 @@ def unit_tools(dataset: str, runners: dict) -> list[tuple[str, Path, str]]:
 
 def affine_tools(costs: str, runners: dict) -> list[tuple[str, Path, str]]:
     """The columns at affine costs `x,o,e`, as WFA counts them: the exact aligners that take them."""
-    batch = "dinara-align (batch, 1 thread)"
+    batch = "karan (batch, 1 thread)"
     chosen = [
-        ("dinara-align (1 thread)", runners["ours"], f"dinara-align:{costs}"),
+        ("karan (1 thread)", runners["ours"], f"karan:{costs}"),
         (batch, runners["ours"], f"{batch}:{costs}"),
         ("wfa", runners["wrapper"], f"wfa:{costs}"),
         ("biwfa", runners["wrapper"], f"biwfa:{costs}"),
@@ -484,7 +484,7 @@ def main() -> None:
         known = max((costs for _, costs in seen), key=len)
         divergence = [100 * cost / max(length, 1) for cost, length in zip(known, lengths)] if not options.affine else []
         data_lines.append(f"| {name} | {pairs} of {whole} | {spread(lengths)} | {spread(divergence)} |")
-        # dinara-align against each rival on the pairs both aligned, the rival's time over dinara-align's.
+        # karan against each rival on the pairs both aligned, the rival's time over karan's.
         ours_rows = measured[ours][0]
         cells = []
         for rival in rivals:

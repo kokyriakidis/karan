@@ -1,5 +1,5 @@
 # A tag `v*` publishes a GitHub release: its notes the tag's section of CHANGELOG.md, and for each
-# platform the C library built by `pixi run build-c` (see c/dinara.h), the command-line aligner and
+# platform the C library built by `pixi run build-c` (see c/karan.h), the command-line aligner and
 # the Python module, each folder runnable without pixi or Mojo.
 name: Release
 
@@ -38,9 +38,9 @@ jobs:
           pixi run build-cli
           pixi run build-python
           mkdir -p dist
-          tar -C build -czf dist/dinara-align-${{ github.ref_name }}-${{ matrix.name }}-c.tar.gz c
-          tar -C build -czf dist/dinara-align-${{ github.ref_name }}-${{ matrix.name }}-cli.tar.gz cli
-          tar -C build -czf dist/dinara-align-${{ github.ref_name }}-${{ matrix.name }}-python.tar.gz python
+          tar -C build -czf dist/karan-${{ github.ref_name }}-${{ matrix.name }}-c.tar.gz c
+          tar -C build -czf dist/karan-${{ github.ref_name }}-${{ matrix.name }}-cli.tar.gz cli
+          tar -C build -czf dist/karan-${{ github.ref_name }}-${{ matrix.name }}-python.tar.gz python
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

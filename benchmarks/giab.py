@@ -15,7 +15,7 @@ HG002's variants and whatever the reference's biases add. So:
    107,000 in the next 75). That alignment only picks reads from a unique stretch of the genome; it decides
    no pair.
 2. The genome: the region's chromosome in both HG002 haplotypes, `chr20_MATERNAL` and `chr20_PATERNAL` for
-   instance, from the assembly at `DINARA_HG002` if set, else cut from the published one over HTTPS.
+   instance, from the assembly at `KARAN_HG002` if set, else cut from the published one over HTTPS.
 3. The pairs: each read mapped to the two haplotypes by minimap2 (`-x sr` for Illumina, `-x map-hifi` for
    HiFi, `-x map-ont` for nanopore), its primary alignment kept whatever its mapping quality, which is zero wherever the haplotypes
    agree; its soft-clipped ends trimmed, and the haplotype's stretch its alignment covers cut out. A read
@@ -77,7 +77,7 @@ def genome(directory: Path, chromosome: str) -> tuple[Path, dict[str, str]]:
     """One of HG002's chromosomes, both haplotypes, as a FASTA file and as upper-case sequences by name."""
     path = directory / f"hg002v1.1_{chromosome}.fa"
     if not path.exists():
-        source = os.environ.get("DINARA_HG002", HG002)
+        source = os.environ.get("KARAN_HG002", HG002)
         print(f"cutting {chromosome} of both haplotypes from {source} ...", file=sys.stderr, flush=True)
         partial = path.with_suffix(".part")
         contigs = [f"{chromosome}_MATERNAL", f"{chromosome}_PATERNAL"]

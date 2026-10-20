@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
  * MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-// The C API through its C++ wrapper (see c/dinara.h), and once through C's own structs: known distances
+// The C API through its C++ wrapper (see c/karan.h), and once through C's own structs: known distances
 // and CIGARs, empty sequences, symbols past ACGT, every mode, long pairs whose CIGAR spells the distance,
 // four threads at once, and batches.
 //
@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include "dinara.h"
+#include "karan.h"
 
 // The checks failed so far; any one fails the run, after every check has been reported.
 static int failures = 0;
@@ -64,163 +64,163 @@ static std::string mutated(const std::string &text, double rate, std::mt19937 &r
 
 // Runs every check, and fails when any did.
 int main() {
-    using dinara::Costs;
-    using dinara::Mode;
-    CHECK(dinara::distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA") == 2);
-    dinara::Alignment aligned = dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA");
+    using karan::Costs;
+    using karan::Mode;
+    CHECK(karan::distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA") == 2);
+    karan::Alignment aligned = karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA");
     CHECK(aligned.cost == 2 && aligned.score == -2 && aligned.cigar == "4=1D2=1I6=");
     CHECK(aligned.reference_start == 0 && aligned.reference_end == 13 && aligned.query_end == 13);
-    CHECK(dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", Costs::edit(), Mode::global(), {}, dinara::Ties::left, false)
+    CHECK(karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", Costs::edit(), Mode::global(), {}, karan::Ties::left, false)
               .cigar == "4M1D2M1I6M");
 
-    CHECK(dinara::align("", "ACG").cigar == "3I");
-    CHECK(dinara::align("ACG", "").cigar == "3D");
-    dinara::Alignment empty = dinara::align("", "");
+    CHECK(karan::align("", "ACG").cigar == "3I");
+    CHECK(karan::align("ACG", "").cigar == "3D");
+    karan::Alignment empty = karan::align("", "");
     CHECK(empty.cost == 0 && empty.cigar.empty());
 
-    CHECK(dinara::align("ACGTNNAC", "ACGTNNAC").cigar == "8=");
-    CHECK(dinara::distance("ACGTN", "ACGTA") == 1);
+    CHECK(karan::align("ACGTNNAC", "ACGTNNAC").cigar == "8=");
+    CHECK(karan::distance("ACGTN", "ACGTA") == 1);
     // More symbols than the bit-parallel sweep takes: the wavefront takes any byte.
-    CHECK(dinara::distance("NRYKMSW", "NRYKMSA") == 1);
+    CHECK(karan::distance("NRYKMSW", "NRYKMSA") == 1);
     bool refused = false;
     try {
-        dinara::distance("\xfe", "A");
-    } catch (const dinara::UnsupportedSymbols &) {
+        karan::distance("\xfe", "A");
+    } catch (const karan::UnsupportedSymbols &) {
         refused = true;
     }
     CHECK(refused);
 
     Costs affine = Costs::affine(4, 6, 2);
-    dinara::Alignment cost12 = dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine);
+    karan::Alignment cost12 = karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine);
     CHECK(cost12.cost == 12 && cost12.cigar == "4=3X6=");
-    CHECK(dinara::align("ACGT", "", affine).cigar == "4D");
-    CHECK(dinara::align("ACGT", "", affine).cost == 14);
+    CHECK(karan::align("ACGT", "", affine).cigar == "4D");
+    CHECK(karan::align("ACGT", "", affine).cost == 14);
     bool invalid = false;
     try {
-        dinara::align("A", "C", Costs::affine(0, 6, 2));
+        karan::align("A", "C", Costs::affine(0, 6, 2));
     } catch (const std::invalid_argument &) {
         invalid = true;
     }
     CHECK(invalid);
-    CHECK(dinara::distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == 12);
-    CHECK(dinara::distance_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 12, affine) == 12);
-    CHECK(!dinara::distance_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 11, affine));
-    CHECK(!dinara::align_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 11, affine));
-    CHECK(dinara::align_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 12, affine)->cigar == "4=3X6=");
+    CHECK(karan::distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == 12);
+    CHECK(karan::distance_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 12, affine) == 12);
+    CHECK(!karan::distance_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 11, affine));
+    CHECK(!karan::align_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 11, affine));
+    CHECK(karan::align_within("ACGTACGTTTGCA", "ACGTCGTTTTGCA", 12, affine)->cigar == "4=3X6=");
     // A read placed inside a reference: its span, and the CIGAR over it alone.
-    dinara::Alignment placed = dinara::align("TTTTACGTACGTTTTT", "ACGTACGT", affine, Mode::infix());
+    karan::Alignment placed = karan::align("TTTTACGTACGTTTTT", "ACGTACGT", affine, Mode::infix());
     CHECK(placed.cost == 0 && placed.cigar == "8=" && placed.reference_start == 4 && placed.reference_end == 12);
-    dinara::Alignment found = dinara::align("TTTTACGTACGTTTTT", "ACGTCGT", Costs::edit(), Mode::infix());
+    karan::Alignment found = karan::align("TTTTACGTACGTTTTT", "ACGTCGT", Costs::edit(), Mode::infix());
     CHECK(found.cost == 1 && found.reference_start == 4);
-    CHECK(dinara::distance("TTTTACGTACGTTTTT", "ACGTACGT", affine) > 0);
-    CHECK(dinara::distance("TTTTACGTACGTTTTT", "ACGTACGT", affine, Mode::infix()) == 0);
-    CHECK(dinara::distance("ACGTACGTTTTT", "ACGTACGT", affine, Mode::prefix()) == 0);
-    CHECK(dinara::distance("TTTTACGTACGT", "ACGTACGT", affine, Mode::suffix()) == 0);
-    CHECK(dinara::distance("TTTTACGTACGT", "ACGTACGT", Costs::edit(), Mode::suffix()) == 0);
-    dinara::Alignment overlap = dinara::align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, Mode::ends_free(5, 0, 0, 5));
+    CHECK(karan::distance("TTTTACGTACGTTTTT", "ACGTACGT", affine) > 0);
+    CHECK(karan::distance("TTTTACGTACGTTTTT", "ACGTACGT", affine, Mode::infix()) == 0);
+    CHECK(karan::distance("ACGTACGTTTTT", "ACGTACGT", affine, Mode::prefix()) == 0);
+    CHECK(karan::distance("TTTTACGTACGT", "ACGTACGT", affine, Mode::suffix()) == 0);
+    CHECK(karan::distance("TTTTACGTACGT", "ACGTACGT", Costs::edit(), Mode::suffix()) == 0);
+    karan::Alignment overlap = karan::align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, Mode::ends_free(5, 0, 0, 5));
     CHECK(overlap.cost == 0 && overlap.cigar == "8=" && overlap.reference_start == 5 && overlap.query_end == 8);
     // Two-piece gap costs: a long gap at the second piece, 24 + 30, and a short one at the first, 6 + 2.
     std::string gapped = "GATTACAGCTTGCA" + std::string(30, 'C') + "TGGACCATGAGTCATTGACCAGTCGATC";
     std::string plain = "GATTACAGCTTGCATGGACCATGAGTCAGTTGACCAGTCGATC";
     Costs two_piece = Costs::two_piece(4, 6, 2, 24, 1);
-    dinara::Alignment two = dinara::align(gapped, plain, two_piece);
+    karan::Alignment two = karan::align(gapped, plain, two_piece);
     CHECK(two.cost == 62 && two.cigar == "14=30D14=1I14=");
-    CHECK(dinara::distance(gapped, plain, affine) == 74);
-    CHECK(dinara::distance(gapped, plain, two_piece) == 62);
-    CHECK(dinara::distance_within(gapped, plain, 62, two_piece) == 62);
-    CHECK(!dinara::distance_within(gapped, plain, 61, two_piece));
-    CHECK(!dinara::align_within(gapped, plain, 61, two_piece));
-    CHECK(dinara::align("TTTTACGTACGTTTTT", "ACGTACGT", two_piece, Mode::infix()).cost == 0);
+    CHECK(karan::distance(gapped, plain, affine) == 74);
+    CHECK(karan::distance(gapped, plain, two_piece) == 62);
+    CHECK(karan::distance_within(gapped, plain, 62, two_piece) == 62);
+    CHECK(!karan::distance_within(gapped, plain, 61, two_piece));
+    CHECK(!karan::align_within(gapped, plain, 61, two_piece));
+    CHECK(karan::align("TTTTACGTACGTTTTT", "ACGTACGT", two_piece, Mode::infix()).cost == 0);
     // Deletions dearer than insertions: a letter missing from the query costs a deletion's 20 + 5, one
     // extra in it an insertion's 2 + 1.
     Costs dear_deletions = Costs::affine(4, 2, 1).with_deletions(20, 5);
-    CHECK(dinara::align("ACGTACGT", "ACGACGT", dear_deletions).cost == 25);
-    CHECK(dinara::align("ACGACGT", "ACGTACGT", dear_deletions).cost == 3);
-    CHECK(dinara::align("ACGACGT", "ACGTACGT", dear_deletions).cigar == "3=1I4=");
+    CHECK(karan::align("ACGTACGT", "ACGACGT", dear_deletions).cost == 25);
+    CHECK(karan::align("ACGACGT", "ACGTACGT", dear_deletions).cost == 3);
+    CHECK(karan::align("ACGACGT", "ACGTACGT", dear_deletions).cigar == "3=1I4=");
     // A band of the one diagonal: substitutions only, where a gap either way would be cheaper.
-    CHECK(dinara::align("ACGTACGT", "ACGAACGT", affine, Mode::global(), dinara::Band{0, 0}).cigar == "3=1X4=");
-    CHECK(dinara::distance("AAAACCCC", "CCCCAAAA", affine, Mode::global(), dinara::Band::around(0)) == 32);
-    CHECK(dinara::distance("AAAACCCC", "CCCCAAAA", affine) < 32);
-    CHECK(dinara::distance("AAAACCCC", "CCCCAAAA", Costs::edit(), Mode::global(), dinara::Band::around(0)) == 8);
-    CHECK(!dinara::distance_within("ACGT", "AC", 100, affine, Mode::global(), dinara::Band::around(1)));
+    CHECK(karan::align("ACGTACGT", "ACGAACGT", affine, Mode::global(), karan::Band{0, 0}).cigar == "3=1X4=");
+    CHECK(karan::distance("AAAACCCC", "CCCCAAAA", affine, Mode::global(), karan::Band::around(0)) == 32);
+    CHECK(karan::distance("AAAACCCC", "CCCCAAAA", affine) < 32);
+    CHECK(karan::distance("AAAACCCC", "CCCCAAAA", Costs::edit(), Mode::global(), karan::Band::around(0)) == 8);
+    CHECK(!karan::distance_within("ACGT", "AC", 100, affine, Mode::global(), karan::Band::around(1)));
     bool outside = false;
     try {
-        dinara::distance("ACGT", "AC", affine, Mode::global(), dinara::Band::around(1));
-    } catch (const dinara::OutsideBand &) {
+        karan::distance("ACGT", "AC", affine, Mode::global(), karan::Band::around(1));
+    } catch (const karan::OutsideBand &) {
         outside = true;
     }
     CHECK(outside);
     // A gap in a run of repeats: at its left end by default, as minimap2 places it, at its right end
     // under WFA2-lib's rule.
-    CHECK(dinara::align("ACGTTTTACG", "ACGTTTACG", affine).cigar == "3=1D6=");
-    CHECK(dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", Costs::edit(), Mode::global(), {}, dinara::Ties::right)
+    CHECK(karan::align("ACGTTTTACG", "ACGTTTACG", affine).cigar == "3=1D6=");
+    CHECK(karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", Costs::edit(), Mode::global(), {}, karan::Ties::right)
               .cigar == "4=1D5=1I3=");
-    CHECK(dinara::align("ACGTTTTACG", "ACGTTTACG", affine, Mode::global(), {}, dinara::Ties::right).cigar ==
+    CHECK(karan::align("ACGTTTTACG", "ACGTTTACG", affine, Mode::global(), {}, karan::Ties::right).cigar ==
           "6=1D3=");
     // An extension stops where the read stops matching, from either end.
-    dinara::Alignment right = dinara::align("ACGTTGCAAGGCTTTTTTTTTT", "ACGTTGCAAGGCGAGAGAGAGA", affine, Mode::extension(1));
+    karan::Alignment right = karan::align("ACGTTGCAAGGCTTTTTTTTTT", "ACGTTGCAAGGCGAGAGAGAGA", affine, Mode::extension(1));
     CHECK(right.score == 12 && right.cost == 0 && right.cigar == "12=" && right.reference_end == 12 &&
           right.query_end == 12);
-    dinara::Alignment left = dinara::align("TTTTTTTTTTACGTTGCAAGGC", "GAGAGAGAGAACGTTGCAAGGC", affine,
-                                           Mode::extension(1, dinara::Anchor::end));
+    karan::Alignment left = karan::align("TTTTTTTTTTACGTTGCAAGGC", "GAGAGAGAGAACGTTGCAAGGC", affine,
+                                           Mode::extension(1, karan::Anchor::end));
     CHECK(left.score == 12 && left.cigar == "12=" && left.reference_start == 10 && left.query_start == 10);
-    CHECK(dinara::align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", two_piece, Mode::extension(1)).score == 12);
+    CHECK(karan::align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", two_piece, Mode::extension(1)).score == 12);
     // With an end bonus past what stopping short gains, the read is aligned to its end, at its own score.
-    dinara::Alignment whole =
-        dinara::align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, Mode::extension(1, dinara::Anchor::start, 0, 1000));
+    karan::Alignment whole =
+        karan::align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, Mode::extension(1, karan::Anchor::start, 0, 1000));
     CHECK(whole.query_end == 16 && whole.score < 12);
     // A Z-drop gives up at the noise: the matching stretch past it is never reached.
     std::string seed_core(40, 'A'), noise_a = "CGTCGTCGTGCTGCTGACGT", noise_b = "TGCATGCATTGACGTACGTG",
                                     rest = std::string(30, 'C') + std::string(30, 'G') + std::string(30, 'T');
-    CHECK(dinara::align(seed_core + noise_a + rest, seed_core + noise_b + rest, affine, Mode::extension(1, dinara::Anchor::start, 10))
+    CHECK(karan::align(seed_core + noise_a + rest, seed_core + noise_b + rest, affine, Mode::extension(1, karan::Anchor::start, 10))
               .reference_end == 40);
-    CHECK(dinara::align(seed_core + noise_a + rest, seed_core + noise_b + rest, affine, Mode::extension(1)).reference_end >
+    CHECK(karan::align(seed_core + noise_a + rest, seed_core + noise_b + rest, affine, Mode::extension(1)).reference_end >
           40);
     // A local alignment: the shared core, whichever ends surround it.
-    dinara::Alignment local = dinara::align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", affine, Mode::local(2));
+    karan::Alignment local = karan::align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", affine, Mode::local(2));
     CHECK(local.score == 16 && local.cigar == "8=" && local.reference_start == 4 && local.query_start == 4);
-    CHECK(dinara::align("ACGT", "ACGT", Costs::edit(), Mode::local(1)).score == 4);
+    CHECK(karan::align("ACGT", "ACGT", Costs::edit(), Mode::local(1)).score == 4);
     // A score alone, with no alignment, and SSW's second best: the later copy of the core is the best end.
-    CHECK(dinara::score("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", affine, Mode::local(2)) == 16);
-    CHECK(dinara::score("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == -12);
-    dinara_local_scores_result twice = dinara::local_scores("ACGTACGTAC" + std::string(20, 'T') + "ACGTACGTAC", "ACGTACGTAC",
+    CHECK(karan::score("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", affine, Mode::local(2)) == 16);
+    CHECK(karan::score("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == -12);
+    karan_local_scores_result twice = karan::local_scores("ACGTACGTAC" + std::string(20, 'T') + "ACGTACGTAC", "ACGTACGTAC",
                                                      affine, Mode::local(2), 5);
     CHECK(twice.score == 20 && twice.reference_end == 40 && twice.second_score == 20 && twice.second_reference_end == 10);
     // A search: the planted copy first, then the one with a substitution.
-    std::vector<dinara::Hit> hits =
-        dinara::search({"TTTT", "ACGTACGTACGT", "ACGTTCGTACGT"}, "ACGTACGTACGT", affine, Mode::local(2), 2);
+    std::vector<karan::Hit> hits =
+        karan::search({"TTTT", "ACGTACGTACGT", "ACGTTCGTACGT"}, "ACGTACGTACGT", affine, Mode::local(2), 2);
     CHECK(hits.size() == 2 && hits[0].index == 1 && hits[0].score == 24 && hits[1].index == 2);
     // An overlap of two reads, the first's suffix on the second's prefix.
-    dinara::Alignment over = dinara::align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, Mode::overlap(2));
+    karan::Alignment over = karan::align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, Mode::overlap(2));
     CHECK(over.score == 16 && over.cigar == "8=" && over.reference_start == 5 && over.query_end == 8);
     // A read placed in a window as a mapper scores it, a match earning 2: 7 matches, one gap of 8.
-    dinara::Alignment placed_scored =
-        dinara::align("TTTTACGTACGTTTTT", "ACGTCGT", affine, Mode::infix().with_match_score(2));
+    karan::Alignment placed_scored =
+        karan::align("TTTTACGTACGTTTTT", "ACGTCGT", affine, Mode::infix().with_match_score(2));
     CHECK(placed_scored.score == 6 && placed_scored.cigar == "4=1D3=" && placed_scored.reference_start == 4);
     // The whole reference inside the query: one gap where it lies at 4, or two mismatches at 8, both 8.
-    dinara::Alignment inside = dinara::align("ACGTCGT", "TTTTACGTACGTTTTT", affine, Mode::ends_free(0, 0, DINARA_ALL, DINARA_ALL));
+    karan::Alignment inside = karan::align("ACGTCGT", "TTTTACGTACGTTTTT", affine, Mode::ends_free(0, 0, KARAN_ALL, KARAN_ALL));
     CHECK(inside.cost == 8 && inside.reference_start == 0 && inside.reference_end == 7);
     bool no_cost = false;
     try {
-        dinara::distance("ACGT", "ACGT", affine, Mode::extension(1));
+        karan::distance("ACGT", "ACGT", affine, Mode::extension(1));
     } catch (const std::invalid_argument &) {
         no_cost = true;
     }
     CHECK(no_cost);
 
     // The C structs themselves, null for every default.
-    dinara_alignment raw{};
-    CHECK(dinara_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, nullptr, nullptr, nullptr, &raw) == 0);
+    karan_alignment raw{};
+    CHECK(karan_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, nullptr, nullptr, nullptr, &raw) == 0);
     CHECK(raw.cost == 2 && std::string(raw.cigar) == "4=1D2=1I6=" && raw.cigar_length == 10);
-    dinara_free(raw.cigar);
-    dinara_costs c_affine{4, 6, 2, -1, 0, 0, 0, -1, 0};
-    dinara_mode c_infix{DINARA_ENDS_FREE, DINARA_ALL, DINARA_ALL, 0, 0, 0, 0, 0};
-    CHECK(dinara_distance("TTTTACGTACGTTTTT", 16, "ACGTACGT", 8, &c_affine, &c_infix, nullptr) == 0);
-    dinara_options capped{INT64_MIN, INT64_MAX, 11, 1, 0, 0};
-    CHECK(dinara_distance("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &c_affine, nullptr, &capped) == DINARA_ABOVE_MAX);
-    CHECK(dinara_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &c_affine, nullptr, &capped, &raw) == DINARA_ABOVE_MAX);
-    dinara_costs c_free{0, 6, 2, -1, 0, 0, 0, -1, 0};
-    CHECK(dinara_distance("A", 1, "C", 1, &c_free, nullptr, nullptr) == DINARA_INVALID_COSTS);
+    karan_free(raw.cigar);
+    karan_costs c_affine{4, 6, 2, -1, 0, 0, 0, -1, 0};
+    karan_mode c_infix{KARAN_ENDS_FREE, KARAN_ALL, KARAN_ALL, 0, 0, 0, 0, 0};
+    CHECK(karan_distance("TTTTACGTACGTTTTT", 16, "ACGTACGT", 8, &c_affine, &c_infix, nullptr) == 0);
+    karan_options capped{INT64_MIN, INT64_MAX, 11, 1, 0, 0};
+    CHECK(karan_distance("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &c_affine, nullptr, &capped) == KARAN_ABOVE_MAX);
+    CHECK(karan_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &c_affine, nullptr, &capped, &raw) == KARAN_ABOVE_MAX);
+    karan_costs c_free{0, 6, 2, -1, 0, 0, 0, -1, 0};
+    CHECK(karan_distance("A", 1, "C", 1, &c_free, nullptr, nullptr) == KARAN_INVALID_COSTS);
 
     std::mt19937 random(7);
     std::uniform_int_distribution<int> base(0, 3);
@@ -232,19 +232,19 @@ int main() {
     }
     std::vector<int64_t> distances;
     for (auto &pair : pairs) {
-        dinara::Alignment long_aligned = dinara::align(pair.first, pair.second);
-        CHECK(long_aligned.cost == dinara::distance(pair.first, pair.second));
+        karan::Alignment long_aligned = karan::align(pair.first, pair.second);
+        CHECK(long_aligned.cost == karan::distance(pair.first, pair.second));
         CHECK(edits(long_aligned.cigar, pair.first.size(), pair.second.size()) == long_aligned.cost);
         distances.push_back(long_aligned.cost);
         // Unit costs under a cap or a band take the wavefront, and the same CIGAR.
-        CHECK(dinara::align_within(pair.first, pair.second, long_aligned.cost, Costs::edit())->cigar ==
+        CHECK(karan::align_within(pair.first, pair.second, long_aligned.cost, Costs::edit())->cigar ==
               long_aligned.cigar);
-        CHECK(dinara::distance(pair.first, pair.second, Costs::linear(2, 2)) == 2 * long_aligned.cost);
+        CHECK(karan::distance(pair.first, pair.second, Costs::linear(2, 2)) == 2 * long_aligned.cost);
         // A memory budget of a few kilobytes splits the pair again and again, at the same cost.
-        dinara::Alignment small = dinara::align(pair.first, pair.second, Costs::affine(4, 6, 2), Mode::global(), {},
-                                                dinara::Ties::left, true, 4096);
-        CHECK(small.cost == dinara::distance(pair.first, pair.second, Costs::affine(4, 6, 2)));
-        CHECK(!dinara::distance_within(pair.first, pair.second, long_aligned.cost - 1));
+        karan::Alignment small = karan::align(pair.first, pair.second, Costs::affine(4, 6, 2), Mode::global(), {},
+                                                karan::Ties::left, true, 4096);
+        CHECK(small.cost == karan::distance(pair.first, pair.second, Costs::affine(4, 6, 2)));
+        CHECK(!karan::distance_within(pair.first, pair.second, long_aligned.cost - 1));
     }
 
     // No state between calls: four threads aligning the same pairs agree with the single thread.
@@ -252,7 +252,7 @@ int main() {
     std::vector<std::thread> threads;
     for (int worker = 0; worker < 4; ++worker)
         threads.emplace_back([&, worker] {
-            for (auto &pair : pairs) seen[worker].push_back(dinara::align(pair.first, pair.second).cost);
+            for (auto &pair : pairs) seen[worker].push_back(karan::align(pair.first, pair.second).cost);
         });
     for (auto &thread : threads) thread.join();
     for (auto &worker : seen) CHECK(worker == distances);
@@ -260,23 +260,23 @@ int main() {
     // A batch over every thread, and over two, agrees with the pairs one at a time.
     std::vector<std::string_view> firsts, seconds;
     for (auto &pair : pairs) firsts.push_back(pair.first), seconds.push_back(pair.second);
-    CHECK(dinara::distances(firsts, seconds) == distances);
-    CHECK(dinara::distances(firsts, seconds, Costs::edit(), Mode::global(), {}, 2) == distances);
+    CHECK(karan::distances(firsts, seconds) == distances);
+    CHECK(karan::distances(firsts, seconds, Costs::edit(), Mode::global(), {}, 2) == distances);
     std::vector<int64_t> affine_costs;
-    for (auto &pair : pairs) affine_costs.push_back(dinara::distance(pair.first, pair.second, Costs::affine(4, 6, 2)));
-    CHECK(dinara::distances(firsts, seconds, Costs::affine(4, 6, 2)) == affine_costs);
-    std::vector<dinara::Alignment> batch = dinara::alignments(firsts, seconds);
+    for (auto &pair : pairs) affine_costs.push_back(karan::distance(pair.first, pair.second, Costs::affine(4, 6, 2)));
+    CHECK(karan::distances(firsts, seconds, Costs::affine(4, 6, 2)) == affine_costs);
+    std::vector<karan::Alignment> batch = karan::alignments(firsts, seconds);
     for (size_t index = 0; index < batch.size(); ++index) {
         CHECK(batch[index].cost == distances[index]);
-        CHECK(batch[index].cigar == dinara::align(pairs[index].first, pairs[index].second).cigar);
+        CHECK(batch[index].cigar == karan::align(pairs[index].first, pairs[index].second).cigar);
     }
     // Affine batches too, which go many pairs at once into the lanes, each CIGAR the one either rule picks.
-    for (dinara::Ties ties : {dinara::Ties::left, dinara::Ties::right}) {
-        std::vector<dinara::Alignment> affine_batch =
-            dinara::alignments(firsts, seconds, Costs::affine(4, 6, 2), Mode::global(), {}, ties);
+    for (karan::Ties ties : {karan::Ties::left, karan::Ties::right}) {
+        std::vector<karan::Alignment> affine_batch =
+            karan::alignments(firsts, seconds, Costs::affine(4, 6, 2), Mode::global(), {}, ties);
         for (size_t index = 0; index < affine_batch.size(); ++index) {
-            dinara::Alignment single =
-                dinara::align(pairs[index].first, pairs[index].second, Costs::affine(4, 6, 2), Mode::global(), {}, ties);
+            karan::Alignment single =
+                karan::align(pairs[index].first, pairs[index].second, Costs::affine(4, 6, 2), Mode::global(), {}, ties);
             CHECK(affine_batch[index].cost == affine_costs[index]);
             CHECK(affine_batch[index].cigar == single.cigar);
         }
@@ -294,10 +294,10 @@ int main() {
     std::vector<std::string_view> window_views(windows.begin(), windows.end()), read_views(reads.begin(), reads.end());
     for (Mode mode : {Mode::infix(), Mode::ends_free(0, 60, 60, 0)})
         for (Costs costs : {Costs::affine(4, 6, 2), Costs::edit()})
-            for (dinara::Ties ties : {dinara::Ties::left, dinara::Ties::right}) {
-                std::vector<dinara::Alignment> placed_batch = dinara::alignments(window_views, read_views, costs, mode, {}, ties);
+            for (karan::Ties ties : {karan::Ties::left, karan::Ties::right}) {
+                std::vector<karan::Alignment> placed_batch = karan::alignments(window_views, read_views, costs, mode, {}, ties);
                 for (size_t index = 0; index < windows.size(); ++index) {
-                    dinara::Alignment single = dinara::align(windows[index], reads[index], costs, mode, {}, ties);
+                    karan::Alignment single = karan::align(windows[index], reads[index], costs, mode, {}, ties);
                     CHECK(placed_batch[index].cost == single.cost);
                     CHECK(placed_batch[index].cigar == single.cigar);
                     CHECK(placed_batch[index].reference_start == single.reference_start);
@@ -305,22 +305,22 @@ int main() {
                 }
             }
     // One thread's aligner, reused pair after pair, gives what the functions give; moved, it goes on.
-    dinara::Aligner aligner;
-    for (dinara::Ties ties : {dinara::Ties::left, dinara::Ties::right})
+    karan::Aligner aligner;
+    for (karan::Ties ties : {karan::Ties::left, karan::Ties::right})
         for (size_t index = 0; index < pairs.size(); ++index) {
             auto &pair = pairs[index];
             CHECK(aligner.distance(pair.first, pair.second, Costs::affine(4, 6, 2)) == affine_costs[index]);
             CHECK(aligner.align(pair.first, pair.second, Costs::affine(4, 6, 2), Mode::global(), {}, ties).cigar ==
-                  dinara::align(pair.first, pair.second, Costs::affine(4, 6, 2), Mode::global(), {}, ties).cigar);
+                  karan::align(pair.first, pair.second, Costs::affine(4, 6, 2), Mode::global(), {}, ties).cigar);
             CHECK(aligner.distance_within(pair.first, pair.second, distances[index]) == distances[index]);
         }
-    dinara::Aligner moved = std::move(aligner);
+    karan::Aligner moved = std::move(aligner);
     CHECK(moved.distance(pairs[0].first, pairs[0].second) == distances[0]);
-    dinara_aligner_free(nullptr);
+    karan_aligner_free(nullptr);
     // Under a cap, the pairs past it come back empty, the rest as they were.
     int64_t cap = distances[1];
-    std::vector<std::optional<int64_t>> within = dinara::distances_within(firsts, seconds, cap);
-    std::vector<std::optional<dinara::Alignment>> capped_aligned = dinara::alignments_within(firsts, seconds, cap);
+    std::vector<std::optional<int64_t>> within = karan::distances_within(firsts, seconds, cap);
+    std::vector<std::optional<karan::Alignment>> capped_aligned = karan::alignments_within(firsts, seconds, cap);
     for (size_t index = 0; index < pairs.size(); ++index) {
         CHECK(within[index].has_value() == (distances[index] <= cap));
         CHECK(capped_aligned[index].has_value() == (distances[index] <= cap));
@@ -330,35 +330,35 @@ int main() {
     // A pair's own failure stays its own: a sentinel byte fails that pair alone.
     std::vector<std::string_view> odd_firsts{"ACGT", "\xfe", "ACGA"}, odd_seconds{"ACGT", "A", "ACGT"};
     std::vector<int64_t> codes(3);
-    dinara::detail::Batch odd(odd_firsts, odd_seconds);
-    CHECK(dinara_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
+    karan::detail::Batch odd(odd_firsts, odd_seconds);
+    CHECK(karan_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
                            odd.query_lengths.data(), nullptr, nullptr, nullptr, 0, codes.data()) == 0);
-    CHECK(codes[0] == 0 && codes[1] == DINARA_UNSUPPORTED_SYMBOLS && codes[2] == 1);
+    CHECK(codes[0] == 0 && codes[1] == KARAN_UNSUPPORTED_SYMBOLS && codes[2] == 1);
     bool batch_refused = false;
     try {
-        dinara::distances(odd_firsts, odd_seconds);
-    } catch (const dinara::UnsupportedSymbols &) {
+        karan::distances(odd_firsts, odd_seconds);
+    } catch (const karan::UnsupportedSymbols &) {
         batch_refused = true;
     }
     CHECK(batch_refused);
-    CHECK(dinara_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
+    CHECK(karan_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
                            odd.query_lengths.data(), &c_free, nullptr, nullptr, 0, codes.data()) ==
-          DINARA_INVALID_COSTS);
+          KARAN_INVALID_COSTS);
 
     // A negative length is that pair's own failure, never another's.
     std::vector<int64_t> negative_lengths{4, -4, 4};
-    CHECK(dinara_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
+    CHECK(karan_distances(3, odd.references.data(), odd.reference_lengths.data(), odd.queries.data(),
                            negative_lengths.data(), nullptr, nullptr, nullptr, 3, codes.data()) == 0);
     CHECK(codes[0] == 0 && codes[2] == 1);
-    CHECK(dinara_distance("ACGT", -1, "ACG", 3, nullptr, nullptr, nullptr) == DINARA_INVALID_LENGTH);
+    CHECK(karan_distance("ACGT", -1, "ACG", 3, nullptr, nullptr, nullptr) == KARAN_INVALID_LENGTH);
     int64_t no_index = 0, no_score = 0;
-    CHECK(dinara_search(-1, nullptr, nullptr, "ACGT", 4, nullptr, nullptr, nullptr, 0, 0, &no_index, &no_score) == 0);
+    CHECK(karan_search(-1, nullptr, nullptr, "ACGT", 4, nullptr, nullptr, nullptr, 0, 0, &no_index, &no_score) == 0);
 
     // Several of the caller's threads, each asking a batch for threads of its own, all at once: each batch
     // returns, as it would alone.
     std::vector<int64_t> alone(firsts.size());
-    dinara::detail::Batch shared(firsts, seconds);
-    CHECK(dinara_distances(firsts.size(), shared.references.data(), shared.reference_lengths.data(),
+    karan::detail::Batch shared(firsts, seconds);
+    CHECK(karan_distances(firsts.size(), shared.references.data(), shared.reference_lengths.data(),
                            shared.queries.data(), shared.query_lengths.data(), nullptr, nullptr, nullptr, 0,
                            alone.data()) == 0);
     std::vector<int> agreed(6, 1);
@@ -367,7 +367,7 @@ int main() {
         callers.emplace_back([&, caller] {
             for (int round = 0; round < 10; round++) {
                 std::vector<int64_t> found(firsts.size());
-                dinara_distances(firsts.size(), shared.references.data(), shared.reference_lengths.data(),
+                karan_distances(firsts.size(), shared.references.data(), shared.reference_lengths.data(),
                                  shared.queries.data(), shared.query_lengths.data(), nullptr, nullptr, nullptr,
                                  2 + caller % 3, found.data());
                 if (found != alone) agreed[caller] = 0;
@@ -380,22 +380,22 @@ int main() {
     // What the swarm found: a cap of INT64_MAX is a cap everywhere, a search refuses a band rather than
     // dropping it, a negative deletion extension is refused, and an aligner is built where it is aligned.
     const char *banded_reference = "ACGTACGTACGTACGTTTGACCA", *banded_query = "ACGTACGAACGTACCGTTGACA";
-    dinara_options top_cap{5, 6, INT64_MAX, 1, 0, 0};
-    dinara_alignment top_raw{};
-    CHECK(dinara_distance(banded_reference, 23, banded_query, 22, nullptr, nullptr, &top_cap) == DINARA_ABOVE_MAX);
-    CHECK(dinara_align(banded_reference, 23, banded_query, 22, nullptr, nullptr, &top_cap, &top_raw) ==
-          DINARA_ABOVE_MAX);
-    dinara_options search_band{5, 6, -1, 1, 0, 0};
+    karan_options top_cap{5, 6, INT64_MAX, 1, 0, 0};
+    karan_alignment top_raw{};
+    CHECK(karan_distance(banded_reference, 23, banded_query, 22, nullptr, nullptr, &top_cap) == KARAN_ABOVE_MAX);
+    CHECK(karan_align(banded_reference, 23, banded_query, 22, nullptr, nullptr, &top_cap, &top_raw) ==
+          KARAN_ABOVE_MAX);
+    karan_options search_band{5, 6, -1, 1, 0, 0};
     const char *search_references[] = {banded_reference};
     int64_t search_lengths[] = {23};
     int64_t search_index = 0, search_score = 0;
-    CHECK(dinara_search(1, search_references, search_lengths, banded_query, 22, nullptr, nullptr, &search_band, 0, 0,
-                        &search_index, &search_score) == DINARA_INVALID_MODE);
-    dinara_costs negative_deletions{4, 6, 2, -1, 0, 6, -1, -1, 0};
-    CHECK(dinara_distance("ACGT", 4, "AGT", 3, &negative_deletions, nullptr, nullptr) == DINARA_INVALID_COSTS);
-    dinara_aligner *aligned_place = dinara_aligner_new();
+    CHECK(karan_search(1, search_references, search_lengths, banded_query, 22, nullptr, nullptr, &search_band, 0, 0,
+                        &search_index, &search_score) == KARAN_INVALID_MODE);
+    karan_costs negative_deletions{4, 6, 2, -1, 0, 6, -1, -1, 0};
+    CHECK(karan_distance("ACGT", 4, "AGT", 3, &negative_deletions, nullptr, nullptr) == KARAN_INVALID_COSTS);
+    karan_aligner *aligned_place = karan_aligner_new();
     CHECK(aligned_place != nullptr && reinterpret_cast<uintptr_t>(aligned_place) % 32 == 0);
-    dinara_aligner_free(aligned_place);
+    karan_aligner_free(aligned_place);
 
     if (failures) {
         std::fprintf(stderr, "%d checks failed\n", failures);

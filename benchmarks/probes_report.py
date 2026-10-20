@@ -317,7 +317,7 @@ def report(found: dict, options) -> str:
         "",
         harness.build_note().strip(),
         "",
-        f"From a build with `-D DINARA_PROBES`, {note}, "
+        f"From a build with `-D KARAN_PROBES`, {note}, "
         + ("allocations and copies counted by `probes/counting.c`." if shimmed
            else "no allocation counts (the shim preloads on Linux only)."),
         " The probes' clocks add about 20 ns a phase, so times here run slightly above the plain build's.",

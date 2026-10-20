@@ -4,7 +4,7 @@
   "rounds": 3,
   "of": 12477,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 2.0800178542178543e-05,
     "median": 2.1188e-05,
     "finished": 1221,
@@ -16,7 +16,7 @@
      2.120519656019656e-05
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 2.1387365274365273e-05,
     "median": 2.1387365274365273e-05,
     "finished": 1221,
@@ -143,7 +143,7 @@
   "rounds": 3,
   "of": 5000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.00015409135018050541,
     "median": 0.00010512,
     "finished": 277,
@@ -155,7 +155,7 @@
      0.00015480574729241877
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.00015107757400722023,
     "median": 0.00015107757400722023,
     "finished": 277,
@@ -282,7 +282,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0005823165288461539,
     "median": 0.0002208615,
     "finished": 104,
@@ -294,7 +294,7 @@
      0.0005842171442307692
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.0005620520384615385,
     "median": 0.0005620520384615385,
     "finished": 104,
@@ -421,7 +421,7 @@
   "rounds": 3,
   "of": 50,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.11784631649999999,
     "median": 0.073877838,
     "finished": 4,
@@ -433,7 +433,7 @@
      0.11776737625
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.117820014,
     "median": 0.117820014,
     "finished": 4,
@@ -544,7 +544,7 @@
   "rounds": 3,
   "of": 48,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.15614848775,
     "median": 0.15553132050000001,
     "finished": 4,
@@ -556,7 +556,7 @@
      0.15606295650000002
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.155944786,
     "median": 0.155944786,
     "finished": 4,
@@ -667,7 +667,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0002767410606060606,
     "median": 0.000130064,
     "finished": 33,
@@ -679,7 +679,7 @@
      0.00027858639393939396
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.00025516075757575754,
     "median": 0.00025516075757575754,
     "finished": 33,
@@ -806,7 +806,7 @@
   "rounds": 3,
   "of": 5992,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 5.933177083333334e-07,
     "median": 4.96e-07,
     "finished": 4032,
@@ -818,7 +818,7 @@
      6.764241071428572e-07
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 7.993417658730159e-07,
     "median": 7.993417658730159e-07,
     "finished": 4032,
@@ -945,7 +945,7 @@
   "rounds": 3,
   "of": 890,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 1.2884695652173912e-05,
     "median": 5.335e-06,
     "finished": 69,
@@ -957,7 +957,7 @@
      1.2958333333333333e-05
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 1.5720753623188406e-05,
     "median": 1.5720753623188406e-05,
     "finished": 69,
@@ -1084,7 +1084,7 @@
   "rounds": 3,
   "of": 584,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.003985395681818182,
     "median": 0.001985182,
     "finished": 22,
@@ -1096,7 +1096,7 @@
      0.0039904985
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.003933829818181818,
     "median": 0.003933829818181818,
     "finished": 22,
@@ -1223,7 +1223,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 2.578861e-05,
     "median": 2.2807e-05,
     "finished": 100,
@@ -1235,7 +1235,7 @@
      2.858211e-05
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 2.8057730000000003e-05,
     "median": 2.8057730000000003e-05,
     "finished": 100,
@@ -1362,7 +1362,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.00026753546464646465,
     "median": 0.000242192,
     "finished": 99,
@@ -1374,7 +1374,7 @@
      0.0002682258484848485
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.00026625954545454544,
     "median": 0.00026625954545454544,
     "finished": 99,
@@ -1501,7 +1501,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.00034831564,
     "median": 0.0003456635,
     "finished": 100,
@@ -1513,7 +1513,7 @@
      0.00035370244000000004
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.00035777171000000004,
     "median": 0.00035777171000000004,
     "finished": 100,
@@ -1640,7 +1640,7 @@
   "rounds": 3,
   "of": 10000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0005106001616161616,
     "median": 0.000467018,
     "finished": 99,
@@ -1652,7 +1652,7 @@
      0.0005149162626262627
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.0005160790909090909,
     "median": 0.0005160790909090909,
     "finished": 99,
@@ -1779,7 +1779,7 @@
   "rounds": 3,
   "of": 1000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0014701575555555555,
     "median": 0.001125114,
     "finished": 9,
@@ -1791,7 +1791,7 @@
      0.0014941306666666667
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.0014192403333333334,
     "median": 0.0014192403333333334,
     "finished": 9,
@@ -1918,7 +1918,7 @@
   "rounds": 3,
   "of": 1000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.005100400000000001,
     "median": 0.004822538,
     "finished": 9,
@@ -1930,7 +1930,7 @@
      0.0052489005555555555
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.005088585777777778,
     "median": 0.005088585777777778,
     "finished": 9,
@@ -2057,7 +2057,7 @@
   "rounds": 3,
   "of": 1000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0072437486,
     "median": 0.0070374095,
     "finished": 10,
@@ -2069,7 +2069,7 @@
      0.0073358803
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.007164527499999999,
     "median": 0.007164527499999999,
     "finished": 10,
@@ -2196,7 +2196,7 @@
   "rounds": 3,
   "of": 1000,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0158026744,
     "median": 0.015584349,
     "finished": 10,
@@ -2208,7 +2208,7 @@
      0.015860764899999998
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.0158252922,
     "median": 0.0158252922,
     "finished": 10,
@@ -2331,7 +2331,7 @@
   "rounds": 3,
   "of": 200,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.03303411925,
     "median": 0.031638618,
     "finished": 4,
@@ -2343,7 +2343,7 @@
      0.033031804750000004
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.035446026,
     "median": 0.035446026,
     "finished": 4,
@@ -2466,7 +2466,7 @@
   "rounds": 3,
   "of": 200,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.03122758225,
     "median": 0.029921964000000002,
     "finished": 4,
@@ -2478,7 +2478,7 @@
      0.03121949225
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.03113277425,
     "median": 0.03113277425,
     "finished": 4,
@@ -2597,7 +2597,7 @@
   "rounds": 3,
   "of": 200,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.06780258524999999,
     "median": 0.063801456,
     "finished": 4,
@@ -2609,7 +2609,7 @@
      0.06777957125
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.068615776,
     "median": 0.068615776,
     "finished": 4,
@@ -2728,7 +2728,7 @@
   "rounds": 3,
   "of": 200,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.2526053935,
     "median": 0.252468512,
     "finished": 4,
@@ -2740,7 +2740,7 @@
      0.2536777635
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.2507677125,
     "median": 0.2507677125,
     "finished": 4,
@@ -2851,7 +2851,7 @@
   "rounds": 3,
   "of": 100,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.0610778195,
     "median": 0.060283676499999994,
     "finished": 4,
@@ -2863,7 +2863,7 @@
      0.061243995
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.05705893675,
     "median": 0.05705893675,
     "finished": 4,
@@ -2982,7 +2982,7 @@
   "rounds": 3,
   "of": 100,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.065032138,
     "median": 0.062927786,
     "finished": 4,
@@ -2994,7 +2994,7 @@
      0.064797079
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.064320748,
     "median": 0.064320748,
     "finished": 4,
@@ -3109,7 +3109,7 @@
   "rounds": 3,
   "of": 100,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.18470990625,
     "median": 0.1839537755,
     "finished": 4,
@@ -3121,7 +3121,7 @@
      0.18452196075
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.18462686825,
     "median": 0.18462686825,
     "finished": 4,
@@ -3236,7 +3236,7 @@
   "rounds": 3,
   "of": 100,
   "tools": {
-   "dinara-align (bit-parallel, 1 thread)": {
+   "karan (bit-parallel, 1 thread)": {
     "mean": 0.88982294375,
     "median": 0.6870938275,
     "finished": 4,
@@ -3248,7 +3248,7 @@
      0.8910562905
     ]
    },
-   "dinara-align (bit-parallel, batch, 1 thread)": {
+   "karan (bit-parallel, batch, 1 thread)": {
     "mean": 0.89755556125,
     "median": 0.89755556125,
     "finished": 4,

@@ -1,10 +1,10 @@
 <div align="center">
 
-# dinara-align
+# karan
 
 **Exact pairwise sequence alignment in Mojo, for the CPU and the GPU.**
 
-[![CI](https://github.com/kokyriakidis/dinara-align/actions/workflows/ci.yml/badge.svg)](https://github.com/kokyriakidis/dinara-align/actions/workflows/ci.yml)
+[![CI](https://github.com/kokyriakidis/karan/actions/workflows/ci.yml/badge.svg)](https://github.com/kokyriakidis/karan/actions/workflows/ci.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL%202.0-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20x86--64%20%7C%20Linux%20AArch64%20%7C%20macOS%20Apple%20silicon-lightgrey)
 ![Languages](https://img.shields.io/badge/API-Mojo%20%7C%20Python%20%7C%20C%20%7C%20C%2B%2B%20%7C%20CLI-orange)
@@ -14,14 +14,14 @@
 
 </div>
 
-dinara-align finds the optimal alignment of two sequences: the least edit distance, the least gap-affine
+karan finds the optimal alignment of two sequences: the least edit distance, the least gap-affine
 cost or the best score. It aligns globally, with free ends, as a seed extension or locally, and returns
 the CIGAR. **No heuristic decides the result**, and one fixed rule chooses among equally good alignments.
 It runs from Mojo, Python, C, C++ and the command line.
 
 ```python
->>> import dinara_align as da
->>> da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA").cigar
+>>> import karan
+>>> karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA").cigar
 '4=1D2=1I6='
 ```
 
@@ -40,19 +40,19 @@ It runs from Mojo, Python, C, C++ and the command line.
 
 ### Prebuilt releases
 
-Each [release](https://github.com/kokyriakidis/dinara-align/releases) has three archives per platform
+Each [release](https://github.com/kokyriakidis/karan/releases) has three archives per platform
 (Linux x86-64, Linux AArch64, macOS on Apple silicon). Each archive includes the Mojo runtime it needs, so
 neither Mojo nor pixi has to be installed:
 
 | archive | contents |
 | :-- | :-- |
-| `dinara-align-<version>-<platform>-cli.tar.gz` | the command-line aligner, `cli/dinara-align` |
-| `dinara-align-<version>-<platform>-python.tar.gz` | the Python package, `python/dinara_align` |
-| `dinara-align-<version>-<platform>-c.tar.gz` | the C/C++ library and header, `c/libdinara` and `c/dinara.h` |
+| `karan-<version>-<platform>-cli.tar.gz` | the command-line aligner, `cli/karan` |
+| `karan-<version>-<platform>-python.tar.gz` | the Python package, `python/karan` |
+| `karan-<version>-<platform>-c.tar.gz` | the C/C++ library and header, `c/libkaran` and `c/karan.h` |
 
 ```bash
-tar -xzf dinara-align-v0.1.0-linux-64-cli.tar.gz && ./cli/dinara-align --help
-tar -xzf dinara-align-v0.1.0-linux-64-python.tar.gz && PYTHONPATH=$PWD/python python3 -c "import dinara_align"
+tar -xzf karan-v0.1.0-linux-64-cli.tar.gz && ./cli/karan --help
+tar -xzf karan-v0.1.0-linux-64-python.tar.gz && PYTHONPATH=$PWD/python python3 -c "import karan"
 ```
 
 On Linux the archives need glibc 2.35 or later (Ubuntu 22.04, Debian 12, RHEL 10). They are built for
@@ -64,11 +64,11 @@ Building from source needs [pixi](https://pixi.sh), which installs Mojo and ever
 the project.
 
 ```bash
-git clone https://github.com/kokyriakidis/dinara-align && cd dinara-align
-pixi run build-cli       # build/cli/dinara-align
-pixi run build-python    # build/python/dinara_align
+git clone https://github.com/kokyriakidis/karan && cd karan
+pixi run build-cli       # build/cli/karan
+pixi run build-python    # build/python/karan
 pixi run build-wheel     # build/dist/*.whl, for pip install
-pixi run build-c         # build/c: libdinara and dinara.h
+pixi run build-c         # build/c: libkaran and karan.h
 ```
 
 Each build script takes an optional target CPU, for example `pixi run build-cli x86-64-v3`. The result
@@ -79,58 +79,59 @@ is faster on newer machines but runs only on CPUs with that instruction set.
 ### Command line
 
 ```console
-$ dinara-align -r ACGTACGTTTGCA -q ACGTCGTTTTGCA
+$ karan -r ACGTACGTTTGCA -q ACGTCGTTTTGCA
 query	reference	strand	cost	score	reference_start	reference_end	query_start	query_end	cigar
 query	reference	+	2	-2	0	13	0	13	4=1D2=1I6=
 
-$ dinara-align --costs affine:4,6,2 --mode infix --format sam reference.fa reads.fq   # reads placed in a reference
+$ karan --costs affine:4,6,2 --mode infix --format sam reference.fa reads.fq   # reads placed in a reference
 ```
 
 Inputs can be FASTA or FASTQ files, a tab-separated file of pairs (`--pairs`), or two sequences given
 on the command line (`-r`, `-q`). Output is a table, SAM or PAF, and `--threads` spreads the pairs over
-cores. `dinara-align --help` lists every option.
+cores. `karan --help` lists every option.
 
 ### Python
 
 ```python
-import dinara_align as da
+import karan
 
-da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")                            # 2
+karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")                          # 2
 
-costs = da.Costs.affine(4, 6, 2)                                          # mismatch 4, gap of k: 6 + 2k
-found = da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", costs)
-found.cost, found.cigar                                                    # (12, '4=3X6=')
+costs = karan.Costs.affine(4, 6, 2)                                       # mismatch 4, gap of k: 6 + 2k
+found = karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", costs)
+found.cost, found.cigar                                                   # (12, '4=3X6=')
 
-placed = da.align("TTTTACGTACGTTTTT", "ACGTACGT", costs, da.Mode.INFIX)
-placed.cigar, placed.reference_start, placed.reference_end                 # ('8=', 4, 12)
+placed = karan.align("TTTTACGTACGTTTTT", "ACGTACGT", costs, karan.Mode.INFIX)
+placed.cigar, placed.reference_start, placed.reference_end                # ('8=', 4, 12)
 
-da.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", costs, da.Mode.local(2)).score     # 16
+core = karan.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", costs, karan.Mode.local(2))
+core.score                                                                # 16
 
-da.distances(["ACGTACGT", "TTGCA"], ["ACGACGT", "TTGGCA"], threads=4)    # [1, 1]
+karan.distances(["ACGTACGT", "TTGCA"], ["ACGACGT", "TTGGCA"], threads=4)  # [1, 1]
 
-aligner = da.Aligner()               # keeps its memory between calls: use one per thread in a loop
+aligner = karan.Aligner()   # keeps its memory between calls: one per thread, reused in a loop
 for reference, query in [("ACGTACGTTTGCA", "ACGTCGTTTTGCA"), ("ACGTAC", "ACGAC")]:
-    print(aligner.align(reference, query).cigar)                           # 4=1D2=1I6=, then 3=1D2=
+    print(aligner.align(reference, query).cigar)                          # 4=1D2=1I6=, then 3=1D2=
 ```
 
 <details>
 <summary><b>C</b></summary>
 
 ```c
-#include "dinara.h"
+#include "karan.h"
 
-int64_t edits = dinara_distance("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, NULL, NULL, NULL);  /* 2 */
+int64_t edits = karan_distance("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, NULL, NULL, NULL);  /* 2 */
 
-dinara_costs affine = {4, 6, 2, -1, 0, 0, 0, -1, 0};
-dinara_alignment found;
-if (dinara_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &affine, NULL, NULL, &found) == 0) {
+karan_costs affine = {4, 6, 2, -1, 0, 0, 0, -1, 0};
+karan_alignment found;
+if (karan_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &affine, NULL, NULL, &found) == 0) {
     /* found.cost == 12, found.cigar == "4=3X6=" */
-    dinara_free(found.cigar);
+    karan_free(found.cigar);
 }
 ```
 
-Every function returns a negative `DINARA_` code on failure, and [c/dinara.h](c/dinara.h) documents
-each one. Link with `-L build/c -ldinara` and put `build/c` on the program's library search path.
+Every function returns a negative `KARAN_` code on failure, and [c/karan.h](c/karan.h) documents
+each one. Link with `-L build/c -lkaran` and put `build/c` on the program's library search path.
 
 </details>
 
@@ -138,12 +139,12 @@ each one. Link with `-L build/c -ldinara` and put `build/c` on the program's lib
 <summary><b>C++</b></summary>
 
 ```cpp
-#include "dinara.h"
+#include "karan.h"
 
-auto found = dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", dinara::Costs::affine(4, 6, 2));
+auto found = karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", karan::Costs::affine(4, 6, 2));
 // found.cost == 12, found.cigar == "4=3X6="
 
-dinara::Aligner aligner;  // one per thread, reused across calls
+karan::Aligner aligner;  // one per thread, reused across calls
 auto edits = aligner.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA");  // 2
 ```
 
@@ -155,7 +156,7 @@ The C++ API is defined inline in the same header over the C library, so it build
 <summary><b>Mojo</b></summary>
 
 ```mojo
-from dinara_align import Aligner, Costs, Mode, align, distance
+from karan import Aligner, Costs, Mode, align, distance
 
 def main() raises:
     print(distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA"))  # 2
@@ -168,7 +169,7 @@ def main() raises:
         print(aligner.align(pair[0], pair[1]).cigar)  # 4=1D2=1I6=, then 3=1D2=
 ```
 
-Build against the source tree with `mojo build -I path/to/dinara-align program.mojo`, or from inside
+Build against the source tree with `mojo build -I path/to/karan program.mojo`, or from inside
 this repository with `pixi run mojo build -I . program.mojo`.
 
 </details>
@@ -186,7 +187,7 @@ the commands to reproduce them are in [benchmarks/README.md](benchmarks/README.m
 
 **Edit distance (unit costs)**
 
-| dataset | dinara-align | next fastest exact aligner | speed-up |
+| dataset | karan | next fastest exact aligner | speed-up |
 | :-- | --: | :-- | --: |
 | ONT reads, mean 0.8 kbp (ont-1k) | **15.8 µs** | WFA2-lib, 31.3 µs | 2.0× |
 | ONT reads, mean 3.6 kbp (ont-10k) | **142 µs** | A\*PA2-simple, 247 µs | 1.7× |
@@ -200,7 +201,7 @@ the commands to reproduce them are in [benchmarks/README.md](benchmarks/README.m
 
 **Gap-affine costs (mismatch 4, gap 6 + 2k)**
 
-| dataset | dinara-align | next fastest exact aligner | speed-up |
+| dataset | karan | next fastest exact aligner | speed-up |
 | :-- | --: | :-- | --: |
 | ONT reads, mean 3.6 kbp (ont-10k) | **1.42 ms** | WFA2-lib, 4.86 ms | 3.4× |
 | ONT ultra-long PromethION reads of HG002 | **231 ms** | BiWFA, 576 ms | 2.5× |
@@ -210,7 +211,7 @@ the commands to reproduce them are in [benchmarks/README.md](benchmarks/README.m
 
 **Other modes and batches**
 
-| workload | dinara-align | next fastest | speed-up |
+| workload | karan | next fastest | speed-up |
 | :-- | --: | :-- | --: |
 | local alignment, a 1 kbp read in a 10 kbp window | **1.32 ms** | SSW, 3.17 ms | 2.4× |
 | overlap of two 2 kbp reads | **703 µs** | parasail, 15.3 ms | 22× |
@@ -218,7 +219,7 @@ the commands to reproduce them are in [benchmarks/README.md](benchmarks/README.m
 | two-piece gap-affine costs | **7.54 ms** | WFA2-lib, 15.8 ms | 2.1× |
 | 500,000 Illumina-like reads, gap-affine scores, one core (whole batch) | **229 ms** | WFA2-lib, 1.06 s | 4.6× |
 
-At gap-affine costs, dinara-align also finishes more of the hardest long pairs within the 30 s limit
+At gap-affine costs, karan also finishes more of the hardest long pairs within the 30 s limit
 than any other tool: 9 of 10 of the 100 kbp pairs at 20%, against BiWFA's 4.
 
 ## Alignment modes
@@ -271,8 +272,8 @@ returns the same exact cost and the same CIGAR.
 ## Documentation
 
 - [docs/API.md](docs/API.md): reference for everything the Mojo package exports.
-- [c/dinara.h](c/dinara.h): the C and C++ API, with every function and error code documented.
-- The Python package's docstrings, and `dinara-align --help` for the command line.
+- [c/karan.h](c/karan.h): the C and C++ API, with every function and error code documented.
+- The Python package's docstrings, and `karan --help` for the command line.
 - [benchmarks/README.md](benchmarks/README.md): benchmark setup, datasets, full results and profiling tools.
 - [CHANGELOG.md](CHANGELOG.md): what each release changes.
 
@@ -293,7 +294,7 @@ pixi run format        # mojo format, 120 columns
 The unit-cost edit distance is ported from `pa-bitpacking` in
 [A\*PA](https://github.com/RagnarGrootKoerkamp/astar-pairwise-aligner) by Ragnar Groot Koerkamp and
 Pesho Ivanov, and follows A\*PA2's band doubling and seed heuristic. The gap-affine search follows WFA
-and BiWFA by Santiago Marco-Sola and colleagues. If you use dinara-align, please also cite the work it
+and BiWFA by Santiago Marco-Sola and colleagues. If you use karan, please also cite the work it
 builds on:
 
 - R. Groot Koerkamp. *A\*PA2: up to 19× faster exact global alignment.* WABI 2024.
@@ -306,5 +307,5 @@ builds on:
 
 ## License
 
-dinara-align is licensed under the [Mozilla Public License 2.0](LICENSE). [NOTICE](NOTICE) credits the
+karan is licensed under the [Mozilla Public License 2.0](LICENSE). [NOTICE](NOTICE) credits the
 work it builds on.

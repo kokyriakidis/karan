@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Times dinara-align's modes beyond global alignment against the aligners that offer the same one: free
+"""Times karan's modes beyond global alignment against the aligners that offer the same one: free
 ends at unit and gap-affine costs, seed extension, two-piece gaps, substitution tables, and local, overlap
 and scored infix alignment.
 
@@ -9,7 +9,7 @@ and scored infix alignment.
     pixi run bench-modes --only local-long table-local
     pixi run bench-modes --remeasure    # times the rivals again rather than replaying their kept rows
 
-| workload | dinara-align | rivals |
+| workload | karan | rivals |
 | :-- | :-- | :-- |
 | infix-edit, infix-edit-long | `Costs.edit()`, `Mode.INFIX` | Edlib's HW, WFA2-lib's ends-free edit |
 | prefix-edit | `Costs.edit()`, `Mode.PREFIX` | Edlib's SHW, WFA2-lib's ends-free edit |
@@ -25,7 +25,7 @@ and scored infix alignment.
 Every tool aligns every pair with its CIGAR, on one thread, and its time is the faster of two passes over
 a workload, its mean per pair. Its answer, the sum and position-weighted sum of its costs or scores, must
 equal every other tool's on the same workload, or the run fails. KSW2's kernels are SSE only, so it runs on
-x86 alone. Z-drop is left out: KSW2 gauges it by anti-diagonal and dinara-align as WFA2-lib does, a cost at
+x86 alone. Z-drop is left out: KSW2 gauges it by anti-diagonal and karan as WFA2-lib does, a cost at
 a time, so the two stop at different places and their times compare different work.
 """
 
@@ -56,7 +56,7 @@ WORKLOADS = [
     "overlap-reads",
     "infix-reads",
 ]
-TOOLS = ["dinara-align", "Edlib", "WFA2-lib", "KSW2", "parasail", "SSW"]
+TOOLS = ["karan", "Edlib", "WFA2-lib", "KSW2", "parasail", "SSW"]
 
 
 def generate() -> None:
@@ -170,7 +170,7 @@ def main() -> None:
     set_cpu(options.cpu)
     harness.REMEASURE = options.remeasure
     generate()
-    ours = mojo_binary(HERE / "modes.mojo", "dinara-align-modes")
+    ours = mojo_binary(HERE / "modes.mojo", "karan-modes")
     # The rivals' driver is built only when some workload has no kept rows for it (see `harness.kept_rows`).
     built = {}
 

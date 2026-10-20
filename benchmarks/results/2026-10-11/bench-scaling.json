@@ -4,8 +4,8 @@
   "error": 1,
   "pairs": 100,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 2.578861e-05,
-   "dinara-align (bit-parallel, batch, 1 thread)": 2.8057730000000003e-05,
+   "karan (bit-parallel, 1 thread)": 2.578861e-05,
+   "karan (bit-parallel, batch, 1 thread)": 2.8057730000000003e-05,
    "a*pa2-full": 0.0007382013299999999,
    "a*pa2-simple": 0.00016010885999999998,
    "a*pa": 0.00056634045,
@@ -17,8 +17,8 @@
    "bsalign": 0.0055465028
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 100,
-   "dinara-align (bit-parallel, batch, 1 thread)": 100,
+   "karan (bit-parallel, 1 thread)": 100,
+   "karan (bit-parallel, batch, 1 thread)": 100,
    "a*pa2-full": 100,
    "a*pa2-simple": 100,
    "a*pa": 100,
@@ -35,8 +35,8 @@
   "error": 5,
   "pairs": 99,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.00026753546464646465,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.00026625954545454544,
+   "karan (bit-parallel, 1 thread)": 0.00026753546464646465,
+   "karan (bit-parallel, batch, 1 thread)": 0.00026625954545454544,
    "a*pa2-full": 0.0007951639494949496,
    "a*pa2-simple": 0.00028774729292929295,
    "a*pa": 0.0010776459797979799,
@@ -48,8 +48,8 @@
    "bsalign": 0.005581818646464646
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 99,
-   "dinara-align (bit-parallel, batch, 1 thread)": 99,
+   "karan (bit-parallel, 1 thread)": 99,
+   "karan (bit-parallel, batch, 1 thread)": 99,
    "a*pa2-full": 99,
    "a*pa2-simple": 99,
    "a*pa": 99,
@@ -66,8 +66,8 @@
   "error": 10,
   "pairs": 100,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.00034831564,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.00035777171000000004,
+   "karan (bit-parallel, 1 thread)": 0.00034831564,
+   "karan (bit-parallel, batch, 1 thread)": 0.00035777171000000004,
    "a*pa2-full": 0.00072402946,
    "a*pa2-simple": 0.00044399786,
    "a*pa": 0.0032340185500000004,
@@ -79,8 +79,8 @@
    "bsalign": 0.00561020144
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 100,
-   "dinara-align (bit-parallel, batch, 1 thread)": 100,
+   "karan (bit-parallel, 1 thread)": 100,
+   "karan (bit-parallel, batch, 1 thread)": 100,
    "a*pa2-full": 100,
    "a*pa2-simple": 100,
    "a*pa": 100,
@@ -97,8 +97,8 @@
   "error": 20,
   "pairs": 99,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.0005106001616161616,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.0005160790909090909,
+   "karan (bit-parallel, 1 thread)": 0.0005106001616161616,
+   "karan (bit-parallel, batch, 1 thread)": 0.0005160790909090909,
    "a*pa2-full": 0.0014382144343434344,
    "a*pa2-simple": 0.001013693111111111,
    "a*pa": 0.20425163796969698,
@@ -110,8 +110,8 @@
    "bsalign": 0.005635894282828283
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 99,
-   "dinara-align (bit-parallel, batch, 1 thread)": 99,
+   "karan (bit-parallel, 1 thread)": 99,
+   "karan (bit-parallel, batch, 1 thread)": 99,
    "a*pa2-full": 99,
    "a*pa2-simple": 99,
    "a*pa": 99,
@@ -128,8 +128,8 @@
   "error": 1,
   "pairs": 9,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.0014701575555555555,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.0014192403333333334,
+   "karan (bit-parallel, 1 thread)": 0.0014701575555555555,
+   "karan (bit-parallel, batch, 1 thread)": 0.0014192403333333334,
    "a*pa2-full": 0.007533115222222223,
    "a*pa2-simple": 0.003264270888888889,
    "a*pa": 0.007757274111111111,
@@ -141,8 +141,8 @@
    "bsalign": 0.6421244174444445
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 9,
-   "dinara-align (bit-parallel, batch, 1 thread)": 9,
+   "karan (bit-parallel, 1 thread)": 9,
+   "karan (bit-parallel, batch, 1 thread)": 9,
    "a*pa2-full": 9,
    "a*pa2-simple": 9,
    "a*pa": 9,
@@ -159,8 +159,8 @@
   "error": 5,
   "pairs": 9,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.005100400000000001,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.005088585777777778,
+   "karan (bit-parallel, 1 thread)": 0.005100400000000001,
+   "karan (bit-parallel, batch, 1 thread)": 0.005088585777777778,
    "a*pa2-full": 0.008354454555555555,
    "a*pa2-simple": 0.014904626666666667,
    "a*pa": 0.014100247444444445,
@@ -172,8 +172,8 @@
    "bsalign": 0.6418460811111112
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 9,
-   "dinara-align (bit-parallel, batch, 1 thread)": 9,
+   "karan (bit-parallel, 1 thread)": 9,
+   "karan (bit-parallel, batch, 1 thread)": 9,
    "a*pa2-full": 9,
    "a*pa2-simple": 9,
    "a*pa": 9,
@@ -190,8 +190,8 @@
   "error": 10,
   "pairs": 10,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.0072437486,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.007164527499999999,
+   "karan (bit-parallel, 1 thread)": 0.0072437486,
+   "karan (bit-parallel, batch, 1 thread)": 0.007164527499999999,
    "a*pa2-full": 0.0138959835,
    "a*pa2-simple": 0.02774115,
    "a*pa": 0.0483723238,
@@ -203,8 +203,8 @@
    "bsalign": 0.6294160249
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 10,
-   "dinara-align (bit-parallel, batch, 1 thread)": 10,
+   "karan (bit-parallel, 1 thread)": 10,
+   "karan (bit-parallel, batch, 1 thread)": 10,
    "a*pa2-full": 10,
    "a*pa2-simple": 10,
    "a*pa": 10,
@@ -221,8 +221,8 @@
   "error": 20,
   "pairs": 10,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.0158026744,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.0158252922,
+   "karan (bit-parallel, 1 thread)": 0.0158026744,
+   "karan (bit-parallel, batch, 1 thread)": 0.0158252922,
    "a*pa2-full": 0.0367608693,
    "a*pa2-simple": 0.056837472199999996,
    "edlib": 0.4454976543,
@@ -233,8 +233,8 @@
    "bsalign": 0.6295285442
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 10,
-   "dinara-align (bit-parallel, batch, 1 thread)": 10,
+   "karan (bit-parallel, 1 thread)": 10,
+   "karan (bit-parallel, batch, 1 thread)": 10,
    "a*pa2-full": 10,
    "a*pa2-simple": 10,
    "a*pa": 0,
@@ -251,8 +251,8 @@
   "error": 1,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.03303411925,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.035446026,
+   "karan (bit-parallel, 1 thread)": 0.03303411925,
+   "karan (bit-parallel, batch, 1 thread)": 0.035446026,
    "a*pa2-full": 0.043147041,
    "a*pa2-simple": 0.0725265665,
    "a*pa": 0.04122367875,
@@ -263,8 +263,8 @@
    "quicked": 0.12407993775000001
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -281,8 +281,8 @@
   "error": 5,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.03122758225,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.03113277425,
+   "karan (bit-parallel, 1 thread)": 0.03122758225,
+   "karan (bit-parallel, batch, 1 thread)": 0.03113277425,
    "a*pa2-full": 0.0447045855,
    "a*pa2-simple": 0.21285130175,
    "a*pa": 0.08165739699999999,
@@ -292,8 +292,8 @@
    "quicked": 0.39370463825
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -310,8 +310,8 @@
   "error": 10,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.06780258524999999,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.068615776,
+   "karan (bit-parallel, 1 thread)": 0.06780258524999999,
+   "karan (bit-parallel, batch, 1 thread)": 0.068615776,
    "a*pa2-full": 0.118844665,
    "a*pa2-simple": 0.42347044975000003,
    "a*pa": 0.406739034,
@@ -321,8 +321,8 @@
    "quicked": 0.69877959025
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -339,8 +339,8 @@
   "error": 20,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.2526053935,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.2507677125,
+   "karan (bit-parallel, 1 thread)": 0.2526053935,
+   "karan (bit-parallel, batch, 1 thread)": 0.2507677125,
    "a*pa2-full": 0.543710629,
    "a*pa2-simple": 0.89774656,
    "edlib": 8.525807954666666,
@@ -348,8 +348,8 @@
    "quicked": 1.2438760395
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 0,
@@ -366,8 +366,8 @@
   "error": 1,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.0610778195,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.05705893675,
+   "karan (bit-parallel, 1 thread)": 0.0610778195,
+   "karan (bit-parallel, batch, 1 thread)": 0.05705893675,
    "a*pa2-full": 0.08924945349999999,
    "a*pa2-simple": 0.25318725975,
    "a*pa": 0.09661772874999999,
@@ -377,8 +377,8 @@
    "quicked": 0.39282640925
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -395,8 +395,8 @@
   "error": 5,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.065032138,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.064320748,
+   "karan (bit-parallel, 1 thread)": 0.065032138,
+   "karan (bit-parallel, batch, 1 thread)": 0.064320748,
    "a*pa2-full": 0.115560508,
    "a*pa2-simple": 0.8188970245,
    "a*pa": 0.18280796125,
@@ -405,8 +405,8 @@
    "quicked": 1.4443224510000001
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -423,8 +423,8 @@
   "error": 10,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.18470990625,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.18462686825,
+   "karan (bit-parallel, 1 thread)": 0.18470990625,
+   "karan (bit-parallel, batch, 1 thread)": 0.18462686825,
    "a*pa2-full": 0.3684875385,
    "a*pa2-simple": 1.6473443190000001,
    "a*pa": 0.9740755155,
@@ -433,8 +433,8 @@
    "quicked": 2.6535822854999997
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 4,
@@ -451,15 +451,15 @@
   "error": 20,
   "pairs": 4,
   "seconds_per_pair": {
-   "dinara-align (bit-parallel, 1 thread)": 0.88982294375,
-   "dinara-align (bit-parallel, batch, 1 thread)": 0.89755556125,
+   "karan (bit-parallel, 1 thread)": 0.88982294375,
+   "karan (bit-parallel, batch, 1 thread)": 0.89755556125,
    "a*pa2-full": 2.01870618625,
    "a*pa2-simple": 3.5123713385,
    "quicked": 4.79615006525
   },
   "finished": {
-   "dinara-align (bit-parallel, 1 thread)": 4,
-   "dinara-align (bit-parallel, batch, 1 thread)": 4,
+   "karan (bit-parallel, 1 thread)": 4,
+   "karan (bit-parallel, batch, 1 thread)": 4,
    "a*pa2-full": 4,
    "a*pa2-simple": 4,
    "a*pa": 0,

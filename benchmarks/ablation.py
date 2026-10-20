@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Measures what each technique contributes: dinara-align built with one switched off at a time (see
-`dinara_align/ablation.mojo`) against the build with none, everything else alike.
+"""Measures what each technique contributes: karan built with one switched off at a time (see
+`karan/ablation.mojo`) against the build with none, everything else alike.
 
     pixi run bench-ablation                 # three rounds, every configuration in turn each round
     pixi run bench-ablation --rounds 5

@@ -8,18 +8,18 @@ study does on every core (Kallenborn et al., BMC Bioinformatics 2026), against t
 
 Accelign's study scores 10 million Illumina reads of 148 bp against the reference sections BWA placed
 them in, 103 to 209 bp long, each pair's global alignment score alone, with a match 0, a mismatch -1 and
-a gap of `k` letters `-(3 + (k - 1))`: dinara-align's `Costs.affine(1, 2, 1)`. Those reads are not ours
+a gap of `k` letters `-(3 + (k - 1))`: karan's `Costs.affine(1, 2, 1)`. Those reads are not ours
 to ship, so the pairs here are drawn to the same shape from a fixed seed: 500,000 reads of 148 bp at 1%
 error against sections of their source, most of them the read's own 148 bp, a fifth with up to 22 bases
 fewer or 30 more at either end.
 
-| workload | dinara-align | rivals |
+| workload | karan | rivals |
 | :-- | :-- | :-- |
 | illumina-affine | `distances(..., Costs.affine(1, 2, 1))` | WFA2-lib, exact, score only; KSW2's `extz2`, score only, no band; parasail's striped `nw` |
 | illumina-edit | `distances(...)` at unit costs | WFA2-lib, exact, score only; Edlib's NW, distance only, its own band |
 
 Every tool runs twice: on one core, each library as a library runs, and on every core, each tool's
-calls spread by its own driver, the rivals' through OpenMP, one aligner a thread, dinara-align's by
+calls spread by its own driver, the rivals' through OpenMP, one aligner a thread, karan's by
 `batches.mojo`, a piece of the batch a call; the library itself starts no threads. A time is the faster
 of two passes over the whole batch. The costs, summed and position-weighted, must agree between
 every tool on a workload, or the run fails. Each rival is pinned (see `harness.RIVALS`), built for the same
@@ -60,8 +60,8 @@ def generate() -> None:
 
 
 def build_ours() -> Path:
-    """dinara-align's runner, `batches.mojo`, built for the chosen CPU."""
-    binary = BUILD / f"dinara-align-batches-{harness.CPU}"
+    """karan's runner, `batches.mojo`, built for the chosen CPU."""
+    binary = BUILD / f"karan-batches-{harness.CPU}"
     BUILD.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["mojo", "build", "-I", str(ROOT), str(HERE / "batches.mojo"), "-o", str(binary), *mojo_cpu_args()], check=True
@@ -129,7 +129,7 @@ def main() -> None:
     disagreeing = {workload: found for workload, found in answers.items() if len(set(found.values())) > 1}
     if disagreeing:
         sys.exit(f"the tools' answers disagree: {disagreeing}")
-    tools = ["dinara-align", "dinara-align GPU", "WFA2-lib", "KSW2", "parasail", "Edlib"]
+    tools = ["karan", "karan GPU", "WFA2-lib", "KSW2", "parasail", "Edlib"]
     lines = [
         "| workload | threads | " + " | ".join(tools) + " |",
         "| :-- | :-- | " + " | ".join("--:" for _ in tools) + " |",

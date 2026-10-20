@@ -66,6 +66,6 @@ struct AlignmentError(Copyable, ImplicitlyCopyable, Writable):
     var detail: String
 
     def write_to(self, mut writer: Some[Writer]):
-        """`dinara-align: <phrase> [<detail>]`, the form the C API, the Python package and the command line
+        """`karan: <phrase> [<detail>]`, the form the C API, the Python package and the command line
         pass on."""
-        writer.write("dinara-align: ", self.kind.phrase(), " [", self.detail, "]")
+        writer.write("karan: ", self.kind.phrase(), " [", self.detail, "]")

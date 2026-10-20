@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Writes docs/API.md, the reference of everything `dinara_align` exports, from its docstrings as
+"""Writes docs/API.md, the reference of everything `karan` exports, from its docstrings as
 `mojo doc` reads them.
 
     pixi run api-docs
@@ -23,7 +23,7 @@ OUT = ROOT / "docs" / "API.md"
 
 def exported() -> list:
     """`(module, name)` for every name `__init__.mojo` imports, in order."""
-    text = (ROOT / "dinara_align" / "__init__.mojo").read_text()
+    text = (ROOT / "karan" / "__init__.mojo").read_text()
     out = []
     for match in re.finditer(r"^from \.(\w+) import (\(([^)]*)\)|([^\n]+))$", text, re.MULTILINE):
         names = match.group(3) if match.group(3) is not None else match.group(4)
@@ -80,13 +80,13 @@ def struct_block(entry: dict) -> list:
 
 def main() -> None:
     """Writes `OUT` from `mojo doc`'s JSON, the exported functions, types and constants in turn."""
-    raw = subprocess.run(["mojo", "doc", str(ROOT / "dinara_align")], check=True, capture_output=True, text=True)
+    raw = subprocess.run(["mojo", "doc", str(ROOT / "karan")], check=True, capture_output=True, text=True)
     package = json.loads(raw.stdout)["decl"]
     modules = {module["name"]: module for module in package["modules"]}
     lines = [
         "# API reference",
         "",
-        "Everything `dinara_align` exports, from its docstrings; regenerate with `pixi run api-docs`.",
+        "Everything `karan` exports, from its docstrings; regenerate with `pixi run api-docs`.",
         "",
         prose(modules["__init__"]),
         "",

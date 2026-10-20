@@ -14,8 +14,8 @@ unit = json.loads((results / "bench-exact.json").read_text())
 affine = json.loads((results / "bench-affine-4-6-2-exact.json").read_text())
 unit_md = (results / "bench.md").read_text()
 
-OURS_UNIT = "dinara-align (bit-parallel, 1 thread)"
-OURS_AFFINE = "dinara-align (1 thread)"
+OURS_UNIT = "karan (bit-parallel, 1 thread)"
+OURS_AFFINE = "karan (1 thread)"
 SIZES = {"10000": "10 kbp", "100000": "100 kbp", "500000": "500 kbp", "1000000": "1 Mbp"}
 REAL = ["ont-1k", "ont-10k", "ont-50k", "ont-promethion", "ont-500k", "ont-500k-genvar", "sars-cov-2", "illumina-250", "pacbio-hifi"]
 REAL_LABELS = {"sars-cov-2": "SARS-CoV-2", "illumina-250": "Illumina", "pacbio-hifi": "PacBio HiFi"}
@@ -233,9 +233,9 @@ if modes:
 
     def mode_row(row, index):
         tools = modes[order[index]]
-        rivals = {name: value for name, value in tools.items() if name != "dinara-align" and value}
+        rivals = {name: value for name, value in tools.items() if name != "karan" and value}
         best = min(rivals, key=rivals.get)
-        return [row[0], f"**{number(tools['dinara-align'])}**", f"{best} {number(rivals[best])}"]
+        return [row[0], f"**{number(tools['karan'])}**", f"{best} {number(rivals[best])}"]
 
     replace_rows_by(supplement, "modes", mode_row)
 batches = suite("batch", 2)
@@ -245,12 +245,12 @@ if batches:
     def batch_row(row, index):
         tools = batches[BATCH_KEYS[index]]
         cell = lambda name: number(tools[name]) if tools.get(name) else "–"
-        return row[:2] + [f"**{cell('dinara-align')}**", cell("WFA2-lib"), cell("KSW2"), cell("parasail"), cell("Edlib")]
+        return row[:2] + [f"**{cell('karan')}**", cell("WFA2-lib"), cell("KSW2"), cell("parasail"), cell("Edlib")]
 
     replace_rows_by(supplement, "batch", batch_row)
 
 # Figure 2's data.
-NAMES = {OURS_UNIT: "dinara-align", "a*pa2-full": "A*PA2-full", "a*pa2-simple": "A*PA2-simple", "a*pa": "A*PA",
+NAMES = {OURS_UNIT: "karan", "a*pa2-full": "A*PA2-full", "a*pa2-simple": "A*PA2-simple", "a*pa": "A*PA",
          "edlib": "Edlib", "biwfa": "BiWFA", "wfa": "WFA", "quicked": "QuickEd"}
 
 
@@ -290,7 +290,7 @@ def ratio_line(data, ours, names, rival):
 for name in REAL + SIMULATED:
     record = unit[name]
     ours = record["tools"][OURS_UNIT]
-    rivals = {c: t for c, t in record["tools"].items() if not c.startswith("dinara") and t["finished"] == record["pairs"]}
+    rivals = {c: t for c, t in record["tools"].items() if not c.startswith("karan") and t["finished"] == record["pairs"]}
     if rivals:
         fastest = min(rivals, key=lambda c: rivals[c]["mean"])
         print(f"unit {name}: ours {1e3 * ours['mean']:.4g} ms, fastest rival {fastest} "

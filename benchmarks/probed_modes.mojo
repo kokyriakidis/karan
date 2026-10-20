@@ -6,7 +6,7 @@ The modes runner of `profile.py modes`: each pair of a `modes_bench.py` workload
 `probed.mojo`). The substitution-table workloads take the free `align`, which keeps no tally, so their rows
 carry the counters alone.
 
-    mojo build -D DINARA_PROBES -I . benchmarks/probed_modes.mojo -o <binary> && <binary> <workload.tsv>
+    mojo build -D KARAN_PROBES -I . benchmarks/probed_modes.mojo -o <binary> && <binary> <workload.tsv>
 
 Each row: workload, seconds, the answer, columns, rows and the JSON object.
 """
@@ -14,8 +14,8 @@ Each row: workload, seconds, the answer, columns, rows and the JSON object.
 from std.sys import argv
 from std.time import perf_counter_ns
 
-from dinara_align import Aligner, Costs, Mode, align
-from dinara_align.probes import PROBES
+from karan import Aligner, Costs, Mode, align
+from karan.probes import PROBES
 
 from counters import Counters
 from modes import dna_table
@@ -23,7 +23,7 @@ from modes import dna_table
 
 def main() raises:
     """Aligns the workload file's pairs, one row each."""
-    comptime assert PROBES, "build with -D DINARA_PROBES"
+    comptime assert PROBES, "build with -D KARAN_PROBES"
     var names = List[String]()
     var references = List[String]()
     var queries = List[String]()

@@ -1,11 +1,11 @@
-"""The main paper, written once; render.py turns it into paper.html and dinara-align.tex.
+"""The main paper, written once; render.py turns it into paper.html and karan.tex.
 
 Inline markup: **bold**, *italic*, `code`, [@Key; @Key] parenthetical citation, [@!Key] narrative citation,
 \\( \\) inline maths, \\[ \\] display maths, [#tab:x] / [#fig:x] cross-references.
 Blocks: ("sec", title), ("sub", title), ("p", text), ("list", [items]) numbered, ("table", key), ("figure", key).
 """
 
-TITLE = 'dinara-align: fast, hardware-aware exact pairwise alignment that adapts its algorithm to each pair'
+TITLE = 'karan: fast, hardware-aware exact pairwise alignment that adapts its algorithm to each pair'
 # Authors in order, each with an email; both are corresponding authors.
 AUTHORS = [("Konstantinos Kyriakidis", "kkyriaki@ucsc.edu"), ("Benedict Paten", "bpaten@ucsc.edu")]
 AFFILIATION = "UC Santa Cruz Genomics Institute, Santa Cruz, CA, USA"
@@ -17,20 +17,20 @@ ABSTRACT = [('Motivation',
   'algorithm is fastest on every workload: diagonal transition wins on near-identical pairs, bit-parallel band '
   'doubling on long divergent reads, and inter-sequence vectorisation on batches of short pairs.'),
  ('Results',
-  'We present dinara-align, an exact aligner that chooses the algorithm for each pair as it runs, without giving '
+  'We present karan, an exact aligner that chooses the algorithm for each pair as it runs, without giving '
   'up optimality. Three rules make these choices safe. A switch suggested by a runtime estimate is taken only '
   'once the current search has spent a small fixed share of the least work the alternative could need, so '
   'estimates inflated by errors clustered at read ends cannot abandon searches that would have finished. A '
   'gap-affine alignment starts a second wavefront search only when measured work shows that two searches would '
   'be cheaper than one, a rule we prove preserves optimality. Short pairs in batches are aligned in narrow bands '
   'whose optimality each vector lane certifies. On one Intel Skylake-X core and 25 datasets, from 250 bp reads to '
-  '1 Mbp pairs, dinara-align was the fastest exact aligner at unit costs, up to 2.4 times faster than '
+  '1 Mbp pairs, karan was the fastest exact aligner at unit costs, up to 2.4 times faster than '
   'A*PA2 on ultra-long nanopore reads and 2.6 and 7.0 times faster than WFA on Illumina and HiFi '
   'reads, and at gap-affine costs the fastest on every dataset any tool completed, 1.3 times faster than '
   'WFA on Illumina reads.'),
  ('Availability and implementation',
-  'dinara-align is free software under the Mozilla Public License 2.0, available at '
-  'https://github.com/kokyriakidis/dinara-align with C, C++, Python and command-line interfaces.'),
+  'karan is free software under the Mozilla Public License 2.0, available at '
+  'https://github.com/kokyriakidis/karan with C, C++, Python and command-line interfaces.'),
 ]
 
 BODY = [
@@ -69,7 +69,7 @@ BODY = [
  'work grows with the length times the distance, on long divergent reads, with the seed heuristic on ultra-long '
  'ones; and inter-sequence vectorisation on batches of short pairs. An aligner that is fastest across workloads '
  'must therefore choose among them for each pair, and an exact aligner must make every such choice (which '
- 'algorithm, which bound, when to abandon a search) without giving up optimality. In dinara-align every engine '
+ 'algorithm, which bound, when to abandon a search) without giving up optimality. In karan every engine '
  'is exact, so no choice changes the optimal cost, and a choice that rests on a runtime estimate can delay the '
  "work by at most a fixed small share of the alternative's. Our contributions are:"),
 ('list',
@@ -95,7 +95,7 @@ BODY = [
   'under unit, gap-affine, two-piece and substitution-matrix costs, for single pairs and batches, through C, C++, '
   'Python and command-line interfaces.']),
 ('p',
- 'We evaluate dinara-align on the 25 datasets of the A*PA2 and QuickEd benchmarks, nanopore, Illumina, PacBio '
+ 'We evaluate karan on the 25 datasets of the A*PA2 and QuickEd benchmarks, nanopore, Illumina, PacBio '
  "HiFi and PromethION reads, SARS-CoV-2 genomes and simulated pairs of up to 1 Mbp, with QuickEd's Illumina, "
  "HiFi and PromethION sets built from HG002 reads, each paired with the stretch of HG002's own assembly it "
  'covers. It was the fastest exact aligner on all of them at unit costs, and at gap-affine costs on every '
@@ -107,7 +107,7 @@ BODY = [
  'diagonal \\(j-i\\). Under gap-affine costs \\((x, o, e)\\), for example (4, 6, 2), a match costs 0, a mismatch '
  '\\(x\\) and a gap of \\(k\\) letters \\(g(k)=o+ke\\); unit costs have \\(x=e=1\\) and \\(o=0\\), two-piece costs take the '
  'minimum of two such functions [@Li2018], and a substitution matrix scores each pair of letters. Besides global '
- 'alignment, dinara-align offers ends-free, extension [@Li2018] and local alignment, the last two maximising a '
+ 'alignment, karan offers ends-free, extension [@Li2018] and local alignment, the last two maximising a '
  'score that rewards matches (Section 3.8). An alignment is *optimal* if none has a lower cost, or a higher '
  'score, under the requested costs and mode, within any band or cost limit the caller sets; an exact aligner '
  'returns one or reports that none exists. At unit costs the distance \\(D(i,j)\\) between the prefixes \\(a_1\\dots '
@@ -189,14 +189,14 @@ BODY = [
 ('p',
  'Words occupy the lanes of a vector, staggered by one column, so that the horizontal difference leaving one word '
  'enters the next by a lane rotation [@Wozniak1997; @GrootKoerkamp2024b], on which each column waits. On AVX-512 '
- 'dinara-align interleaves two eight-word groups, ten columns apart, so that each fills the latency of the other, '
+ 'karan interleaves two eight-word groups, ten columns apart, so that each fills the latency of the other, '
  'and bands of two or three words run in general-purpose registers.'),
 ('sub', 'Band bounds from agreeing estimates'),
 ('p',
  'Band doubling is exact for any initial bound, but its running time depends on how close that bound is to the '
  'distance. A computation that has reached cost \\(s\\) at anti-diagonal \\(\\rho\\) estimates the distance as \\(\\hat '
  'D = s(n+m)/\\rho\\), which is reliable when edits are spread evenly and too high by orders of magnitude when they '
- 'gather, as at the ends of nanopore reads. dinara-align takes two estimates, \\(\\hat D_1\\) from a one-ended '
+ 'gather, as at the ends of nanopore reads. karan takes two estimates, \\(\\hat D_1\\) from a one-ended '
  'diagonal transition stopped after eight edits and \\(\\hat D_2\\) from the two-ended search where it handed over. '
  'When at least one seed in 32 chains from the origin, the first bound starts 64 above the seed heuristic there. '
  'Otherwise it is aimed just above \\(\\hat D_1\\) when the two estimates agree within a third, and failing that, as '
@@ -227,7 +227,7 @@ BODY = [
  'edit: two share its start, at rows \\([j, j+15)\\) and \\([j, j+17)\\), and two share its end, at \\([j+1, j+16)\\) '
  'and \\([j-1, j+16)\\). Chaining is all-or-nothing, so a neighbour may chain where \\(\\mu\\) cannot, and the '
  'neighbours are needed for the heuristic to remain a lower bound. Rather than finding each by search and testing '
- 'it for local pruning, dinara-align inserts them whenever \\(\\mu\\) is kept, as the following lemma justifies; the '
+ 'it for local pruning, karan inserts them whenever \\(\\mu\\) is kept, as the following lemma justifies; the '
  'search is that of local pruning (Section 2.4).'),
 ('p',
  '**Lemma 1.** If the search from an exact match \\(\\mu\\) finds no path across the next \\(p\\) seeds, it finds '
@@ -310,7 +310,7 @@ BODY = [
  '(1+\\sqrt2)\\,\\theta\\); where the ends of the sequences bound the fronts, it is always cheaper. Most 250 bp '
  'Illumina reads cost less than \\(\\theta\\), 14 at (4, 6, 2).'),
 ('p',
- 'dinara-align therefore starts with a single search, the one whose fronts the traceback reads (the backward '
+ 'karan therefore starts with a single search, the one whose fronts the traceback reads (the backward '
  'search under the default tie rule), keeps its fronts and traces the alignment as soon as the search reaches '
  'the far corner. Every cost \\(s\\) passed without reaching it shows that \\(C_{\\mathrm{opt}} > s\\), and the '
  'search measures \\(W\\) as it grows: it continues alone while \\(s < \\theta\\), costs the second search would pass '
@@ -340,7 +340,7 @@ BODY = [
  "once its remaining work is projected to exceed a band's, and the gap-affine wavefront to the difference sweep "
  "once its projected total exceeds the sweep's. A projection can exceed the distance a hundredfold when edits "
  'gather at the ends, as on nanopore reads with adapters or poly-A tails, and hand a pair that the search would '
- 'finish in microseconds to a band over the whole matrix. dinara-align hands over on a projection only once the '
+ 'finish in microseconds to a band over the whole matrix. karan hands over on a projection only once the '
  'work already spent has reached one twenty-fourth of the cheapest alternative that could still be needed: for '
  'diagonal transition, the band whose bound equals the cost already reached, which no band can undercut; for the '
  'wavefront, the full sweep. Once the projection favours the alternative, this delays the hand-over by at most '
@@ -358,7 +358,7 @@ BODY = [
  'µs once, while a single call takes one that does not (Supplementary Table S1).'),
 ('sub', 'Thresholds measured against the code'),
 ('p',
- 'The choice of algorithm and the bounds of each search rest on 41 thresholds. We built dinara-align with each '
+ 'The choice of algorithm and the bounds of each search rest on 41 thresholds. We built karan with each '
  'halved and with each doubled and timed the 82 builds against the unchanged one: about thirty moved no sample by '
  'more than 3%, most others traded one dataset against another, and one had become outdated, the length from '
  'which seeds match with one edit (Supplementary Section S1.1).'),
@@ -373,7 +373,7 @@ BODY = [
 ('sub', 'Experimental setup'),
 ('p',
  'All measurements were taken on an Intel Core i9-7900X (Skylake-X, AVX-512), its ten cores at a fixed 3.3 GHz '
- 'with turbo boost and hyper-threading disabled, with dinara-align compiled by Mojo 1.1.0 [@Modular] at commit '
+ 'with turbo boost and hyper-threading disabled, with karan compiled by Mojo 1.1.0 [@Modular] at commit '
  "`7fb47d5` (the other tools four days before, alongside commit `87d365f`, on the same builds and samples) and every tool compiled for the native instruction set except BSAlign's gap-affine kernel, which its "
  'own build keeps to SSE4.2. We combined the protocols of A*PA2 [@GrootKoerkamp2024b] and QuickEd [@Doblas2025].'),
 ('p',
@@ -396,10 +396,10 @@ BODY = [
  'aligned each pair with traceback, on one pinned core, through one aligner object per sample as its own '
  'benchmark runner does, with a 30 s budget per sample, in three rounds; a '
  "pair's time is its median over the rounds, and a tool is credited only with the pairs it completed in every "
- 'round. The other tools were timed in rounds that alternated between them, and dinara-align at its final version '
+ 'round. The other tools were timed in rounds that alternated between them, and karan at its final version '
  'four days later, on the same machine, builds and samples, every answer checked against theirs again. The rounds '
  "agreed closely: the median spread between a tool's fastest and slowest round was 0.4% at unit and 0.5% at "
- "gap-affine costs, at most 27%, on dinara-align's batch alignments of the HiFi reads. Timings quoted "
+ "gap-affine costs, at most 27%, on karan's batch alignments of the HiFi reads. Timings quoted "
  'in Section 3 were recorded when each change was made, against the version before it (Supplementary Table S1). '
  'The exact aligners compared are A*PA2-full (with the seed heuristic and pruning) and A*PA2-simple (band '
  'doubling alone), A*PA [@GrootKoerkamp2024a], Edlib [@Sosic2017], WFA and BiWFA, which denote WFA2-lib in its '
@@ -410,7 +410,7 @@ BODY = [
  'simulated pairs of 148 bp at 1% error, each the median of three runs (Supplementary Tables S3 and S8).'),
 ('sub', 'Speed and memory'),
 ('p',
- 'At unit costs dinara-align had the lowest mean time per alignment of the exact aligners on all 25 datasets. On '
+ 'At unit costs karan had the lowest mean time per alignment of the exact aligners on all 25 datasets. On '
  'the real data ([#tab:unit]) it was 1.5 to 2.4 times faster than the fastest alternative on the nanopore reads '
  '(1.7 times on PromethION) and 3.2 times on the SARS-CoV-2 genomes, and 2.6 and 7.0 times faster than WFA, the '
  'fastest of the others there, on the Illumina and HiFi reads. On the simulated data ([#fig:sweeps]; '
@@ -419,7 +419,7 @@ BODY = [
  '23.9, 39.0 and 62.6 ms for QuickEd. Its narrowest margin was on 10 kbp pairs at 10%, 0.315 against 0.444 ms for '
  'A*PA2-simple. Over all 25 datasets QuickEd took 3.5 to 102 times as long, 8.9 times in the geometric mean.'),
 ('p',
- 'At gap-affine costs dinara-align was 1.3 to 3.7 times faster than the faster of WFA and BiWFA on the 16 '
+ 'At gap-affine costs karan was 1.3 to 3.7 times faster than the faster of WFA and BiWFA on the 16 '
  'datasets all three completed ([#tab:affine]; Supplementary Table S4), the lowest on the Illumina reads, 1.17 '
  'against 1.54 µs for WFA. It aligned every PromethION pair, in 231 ms '
  'against 576 ms for BiWFA, where WFA ran out of memory after 7 of 22, and completed more of the simulated pairs '
@@ -435,11 +435,11 @@ BODY = [
  'An alignment of an ultra-long read increased peak memory by at most 54 MiB, against 81 MiB for A*PA2-full, and '
  'of a 1 Mbp pair at 20% errors by at most 131 MiB, against 184 MiB (Supplementary Table S7). This growth '
  'includes the seed heuristic and the band; the stored tile boundaries stayed within the default limit of 80 MiB '
- "(Section 3.7). QuickEd stayed near 25 MiB. On short reads dinara-align's peak was higher than the others' "
+ "(Section 3.7). QuickEd stayed near 25 MiB. On short reads karan's peak was higher than the others' "
  '([#tab:unit]): the Mojo runtime and the sample, read whole, take about 13 MiB.'),
 ('sec', 'Discussion'),
 ('p',
- 'dinara-align was the fastest exact aligner compared on every dataset at unit costs, and at gap-affine costs on '
+ 'karan was the fastest exact aligner compared on every dataset at unit costs, and at gap-affine costs on '
  'every dataset that any tool completed. This is consistent with choosing '
  'an algorithm for each pair: no single engine was fastest across these workloads, and since every engine is '
  'exact, choosing never forfeits the guarantee or changes the alignment. Three observations stand out. First, '
@@ -453,9 +453,9 @@ BODY = [
  'the code changes, and measuring them again belongs in the evaluation of any aligner that selects its algorithm '
  'by thresholds. Gap-affine alignment of ultra-long reads remains open: no tool completed an ont-500k read '
  'within 30 s. Where memory matters more than time, Edlib, QuickEd and BiWFA (15 to 29 MiB on ultra-long reads) '
- "use less than dinara-align's 71 to 78 MiB. The measured-work rule, the regrouped recurrence and the per-lane "
+ "use less than karan's 71 to 78 MiB. The measured-work rule, the regrouped recurrence and the per-lane "
  'certificate do not depend on this implementation and apply to other wavefront, bit-parallel and inter-sequence '
- 'aligners. And because its alignments are exact and the same whichever engine computes them, dinara-align can '
+ 'aligners. And because its alignments are exact and the same whichever engine computes them, karan can '
  'serve as the reference against which heuristic aligners are measured, at the scale of current long reads.'),
 ('sub', 'Limitations'),
 ('list',
@@ -466,7 +466,7 @@ BODY = [
   'set on uniform 100 kbp pairs like those of [#fig:sweeps]a, so results on unseen data may be less favourable.',
  'The ultra-long and the largest simulated sets were sampled to four pairs. The three rounds were timed from one '
   'build, while on the Skylake-X running times varied by up to a third between builds that left the code involved '
-  'unchanged (Supplementary Table S2), so margins of less than about 10% may not hold across builds. dinara-align '
+  'unchanged (Supplementary Table S2), so margins of less than about 10% may not hold across builds. karan '
   "was timed four days after the other tools, on the same machine; replayed then, the other tools' times stayed within "
   '3% of their own rounds.',
  'The Illumina, HiFi and PromethION reads come from one region of one chromosome each and exclude reads that '
@@ -494,7 +494,7 @@ BACK = [
     ("Conflict of interest", "None declared."),
     ("Funding", "This work received no specific funding."),
     ("Data availability", "The software, benchmark harness and the commits of every compared tool are available at "
-     "https://github.com/kokyriakidis/dinara-align. The benchmarks are reproduced by `pixi run bench` (unit and "
+     "https://github.com/kokyriakidis/karan. The benchmarks are reproduced by `pixi run bench` (unit and "
      "`--affine` costs), `bench-modes`, `bench-batch` and `bench-ablation`, and the raw results behind every table "
      "are in `benchmarks/results/2026-10-15`. Release builds target the baseline "
      "processor of each platform; the AVX-512 code paths require a build for the host processor."),
@@ -502,7 +502,7 @@ BACK = [
 
 TABLES = {
 "engines": {
-  "caption": "Algorithms in dinara-align and the changes introduced in this work.",
+  "caption": "Algorithms in karan and the changes introduced in this work.",
   "header": ["Problem", "Algorithm", "Changes (section)"],
   "align": "lll",
   "wrap": [1, 2],
@@ -516,8 +516,8 @@ TABLES = {
   ]},
 "unit": {
   "fit": True,
-  "caption": "Unit-cost alignment of the real datasets by every exact aligner: mean time per alignment in ms, traceback included, and below it the peak resident memory of the run in MiB, as QuickEd reports it. t.o. marks a tool that completed no pair within 30 s, o.o.m. one the 8 GiB limit stopped, and crash one that crashed: BSAlign's edit distance crashes on pairs of about 150 kbp or more, with or without the limit, on the eighth PromethION pair among them. Times are medians of three rounds: the other tools' alternated between them, and dinara-align's were run four days later at its final version, on the same machine, builds and samples. The simulated datasets are in Fig. 2 and Supplementary Table S5. Bold marks the lowest mean of the tools that completed the most pairs.",
-  "header": ["Dataset", "dinara-align", "A*PA2-full", "A*PA2-simple", "A*PA", "QuickEd", "Edlib", "BiWFA", "WFA", "BSAlign", "KSW2"],
+  "caption": "Unit-cost alignment of the real datasets by every exact aligner: mean time per alignment in ms, traceback included, and below it the peak resident memory of the run in MiB, as QuickEd reports it. t.o. marks a tool that completed no pair within 30 s, o.o.m. one the 8 GiB limit stopped, and crash one that crashed: BSAlign's edit distance crashes on pairs of about 150 kbp or more, with or without the limit, on the eighth PromethION pair among them. Times are medians of three rounds: the other tools' alternated between them, and karan's were run four days later at its final version, on the same machine, builds and samples. The simulated datasets are in Fig. 2 and Supplementary Table S5. Bold marks the lowest mean of the tools that completed the most pairs.",
+  "header": ["Dataset", "karan", "A*PA2-full", "A*PA2-simple", "A*PA", "QuickEd", "Edlib", "BiWFA", "WFA", "BSAlign", "KSW2"],
   "align": "lrrrrrrrrrr",
   "rows": [
     ["*Mean time per alignment*", "", "", "", "", "", "", "", "", "", ""],
@@ -542,8 +542,8 @@ TABLES = {
     ["PacBio HiFi", "13", "7", "6", "6", "4", "8", "8", "9", "127", "21"],
   ]},
 "affine": {
-  "caption": "Gap-affine alignment of the real datasets at costs (4, 6, 2) by every exact aligner that takes them: mean time per alignment in ms, a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and dinara-align's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were; t.o. marks a tool that completed none and o.o.m. one the 8 GiB limit stopped. Every dataset is in Supplementary Table S4. Bold marks the lowest mean of the tools that completed the most pairs.",
-  "header": ["Dataset", "dinara-align", "WFA", "BiWFA", "BSAlign", "KSW2"],
+  "caption": "Gap-affine alignment of the real datasets at costs (4, 6, 2) by every exact aligner that takes them: mean time per alignment in ms, a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and karan's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were; t.o. marks a tool that completed none and o.o.m. one the 8 GiB limit stopped. Every dataset is in Supplementary Table S4. Bold marks the lowest mean of the tools that completed the most pairs.",
+  "header": ["Dataset", "karan", "WFA", "BiWFA", "BSAlign", "KSW2"],
   "align": "lrrrrr",
   "rows": [
     ["ont-1k", "**0.0978**", "0.189", "0.305", "0.336", "1.10"],
@@ -559,9 +559,9 @@ TABLES = {
 }
 
 FIGURES = {
-"overview": "How dinara-align assigns a pair to an algorithm, and the rule behind each hand-over. At unit costs, diagonal transition from one end and then from both aligns near-identical pairs, switching to both ends once they would finish more cheaply and handing over to band doubling over bit-parallel tiles only once its projected work exceeds the band's and it has spent one twenty-fourth of the cheapest band, or, for a pair of at most 2,048 columns, whose band covers the whole matrix, only once it has spent that band's whole cost (Section 3.10); the tiles are traced back within the memory limit. At gap-affine costs one search grows alone, its fronts kept, and is traced back at once if it reaches the end; a second search joins once one would step more diagonals than two would need (Section 3.9), and a global pair projected to take more work than a full sweep in difference recurrences is handed to that sweep after one twenty-fourth of its work, the alignment the same either way. Batches of short pairs are aligned one pair per vector lane within a band whose optimality each lane certifies (Section 3.6). The figure shows alignments; a unit-cost distance skips the one-ended search.",
+"overview": "How karan assigns a pair to an algorithm, and the rule behind each hand-over. At unit costs, diagonal transition from one end and then from both aligns near-identical pairs, switching to both ends once they would finish more cheaply and handing over to band doubling over bit-parallel tiles only once its projected work exceeds the band's and it has spent one twenty-fourth of the cheapest band, or, for a pair of at most 2,048 columns, whose band covers the whole matrix, only once it has spent that band's whole cost (Section 3.10); the tiles are traced back within the memory limit. At gap-affine costs one search grows alone, its fronts kept, and is traced back at once if it reaches the end; a second search joins once one would step more diagonals than two would need (Section 3.9), and a global pair projected to take more work than a full sweep in difference recurrences is handed to that sweep after one twenty-fourth of its work, the alignment the same either way. Batches of short pairs are aligned one pair per vector lane within a band whose optimality each lane certifies (Section 3.6). The figure shows alignments; a unit-cost distance skips the one-ended search.",
 
-"sweeps": "Unit-cost alignment of QuickEd's simulated pairs, mean time per alignment on a logarithmic scale. (a) 100 kbp pairs by error rate. (b) Pairs at 20% errors by length; lines end where a tool completed no pair within 30 s or the 8 GiB limit stopped it, and hollow points mark tools that completed only some pairs. BSAlign and KSW2 are left out for legibility; their times are in the repository's benchmark tables. dinara-align had the lowest mean time at every length and error rate.",
+"sweeps": "Unit-cost alignment of QuickEd's simulated pairs, mean time per alignment on a logarithmic scale. (a) 100 kbp pairs by error rate. (b) Pairs at 20% errors by length; lines end where a tool completed no pair within 30 s or the 8 GiB limit stopped it, and hollow points mark tools that completed only some pairs. BSAlign and KSW2 are left out for legibility; their times are in the repository's benchmark tables. karan had the lowest mean time at every length and error rate.",
 }
 
 REFS = {

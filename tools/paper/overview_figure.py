@@ -36,7 +36,7 @@ NOTES = [(10, 96, "A pair aligned by diagonal transition is traced back from its
 def svg():
     """The figure as inline SVG, coloured by the page's theme tokens."""
     out = [f'<svg class="chart overview" viewBox="0 0 {WIDTH} {HEIGHT}" role="img" '
-           'aria-label="How dinara-align assigns a pair to an algorithm">',
+           'aria-label="How karan assigns a pair to an algorithm">',
            '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
            'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/></marker></defs>']
     for y, title in LANES:

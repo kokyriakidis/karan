@@ -11,7 +11,7 @@ it ran on.
 
 A pinned rival's times do not change, so each is timed once on a machine and its results kept: by
 `measure` for the runners that speak the `seq` protocol, by `kept_rows` for the in-process drivers. A
-later run replays them and times dinara-align alone, until a pin, a runner's source, a workload or the
+later run replays them and times karan alone, until a pin, a runner's source, a workload or the
 CPU changes, or a fresh run is asked for.
 """
 
@@ -200,7 +200,7 @@ def cargo_runner(crate: str, environment: dict) -> Path:
 
 
 def mojo_binary(source: Path, name: str) -> Path:
-    """Builds a dinara-align runner, `source`, against this checkout, unless it already is.
+    """Builds a karan runner, `source`, against this checkout, unless it already is.
 
     A build takes seconds, so the binary is kept while it is newer than every source and the toolchain's
     lock, and was built with the same command, which a stamp beside it records.
@@ -210,7 +210,7 @@ def mojo_binary(source: Path, name: str) -> Path:
     accelerator = os.environ.get("MOJO_ACCELERATOR", "").split()
     command = ["mojo", "build", "-I", str(ROOT), str(source), "-o", str(binary), *mojo_cpu_args(), *accelerator]
     stamp = binary.with_suffix(".command")
-    sources = [source, ROOT / "pixi.lock", *(ROOT / "dinara_align").rglob("*.mojo")]
+    sources = [source, ROOT / "pixi.lock", *(ROOT / "karan").rglob("*.mojo")]
     if (
         binary.exists()
         and stamp.exists()
@@ -225,7 +225,7 @@ def mojo_binary(source: Path, name: str) -> Path:
 
 def mojo_runner() -> Path:
     """The `seq` runner, `ours.mojo` (see `run_tool`)."""
-    return mojo_binary(HERE / "ours.mojo", "dinara-align-runner")
+    return mojo_binary(HERE / "ours.mojo", "karan-runner")
 
 
 def c_driver(driver: Path, name: str, extra: list = []) -> Path:
@@ -308,7 +308,7 @@ def kept_rows(tool: str, pins: list, inputs: list, measured):
     A rival is pinned, so the same commits and driver built for the same CPU give the same times on the
     same workload files: its rows are kept under all of those, `pins` the rival repositories it builds
     from and `inputs` the files its driver and its workloads are, and replayed until any of them
-    changes, or `REMEASURE` asks for a fresh run. dinara-align, whose code changes, runs every time.
+    changes, or `REMEASURE` asks for a fresh run. karan, whose code changes, runs every time.
     """
     commits = "-".join(RIVALS[name][1][:12] for name in pins)
     key = "\t".join([tool, commits, fingerprint(*inputs), CPU])
@@ -496,7 +496,7 @@ def measure(binary: Path, tool: str, path: Path, budget: float, kept: dict | Non
     and kept for good under the file's content and the rival's build (see `identity`): a smaller budget
     replays that run (see `replay`), and a larger one reuses it if it aligned every pair, running again
     only if it did not. A rival's peak memory is that of
-    the run kept. dinara-align, `kept` None, runs every time.
+    the run kept. karan, `kept` None, runs every time.
     """
     if kept is None:
         return run_tool(binary, tool, path, budget)

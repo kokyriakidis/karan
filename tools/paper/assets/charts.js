@@ -1,6 +1,6 @@
 /* Charts: log-scale line charts, drawn to scale from benchmarks/README.md's run over QuickEd's simulated sets. */
 const TOOLS = [
-  ["dinara-align", "--c-dinara", 3.2, ""], ["A*PA2-full", "--c-apafull", 1.8, ""], ["A*PA2-simple", "--c-apasimple", 1.8, "6 4"],
+  ["karan", "--c-karan", 3.2, ""], ["A*PA2-full", "--c-apafull", 1.8, ""], ["A*PA2-simple", "--c-apasimple", 1.8, "6 4"],
   ["A*PA", "--c-apa", 1.8, "2 3"], ["Edlib", "--c-edlib", 1.8, ""], ["BiWFA", "--c-biwfa", 1.8, "6 4"], ["WFA", "--c-wfa", 1.8, ""],
   ["QuickEd", "--c-quicked", 1.8, "8 3 2 3"],
 ];
@@ -84,10 +84,10 @@ const divHidden = new Set(), lenHidden = new Set();
 let lenRate = 20;
 function drawAll() {
   lineChart(document.getElementById("chart-divergence"), { xs: DIVERGENCE.x, xLog: false, xLabel: "errors (%), 100 kbp pairs", xTickEvery: 1,
-    xTick: x => x + "%", series: toPairs(DIVERGENCE.series), styles: STYLES, hidden: divHidden, yMin: 1, yMax: 1000, top: "dinara-align",
+    xTick: x => x + "%", series: toPairs(DIVERGENCE.series), styles: STYLES, hidden: divHidden, yMin: 1, yMax: 1000, top: "karan",
     tooltipTitle: x => "100 kbp at " + x + "%" });
   lineChart(document.getElementById("chart-length"), { xs: LENGTH_X, xLog: true, xLabel: "length, " + lenRate + "% errors",
-    xTick: x => x >= 1000 ? "1 Mbp" : x + " kbp", series: LENGTH[lenRate], styles: STYLES, hidden: lenHidden, yMin: 0.1, yMax: 10000, top: "dinara-align",
+    xTick: x => x >= 1000 ? "1 Mbp" : x + " kbp", series: LENGTH[lenRate], styles: STYLES, hidden: lenHidden, yMin: 0.1, yMax: 10000, top: "karan",
     tooltipTitle: x => (x >= 1000 ? "1 Mbp" : x + " kbp") + " at " + lenRate + "%" });
 }
 function drawLegends() {

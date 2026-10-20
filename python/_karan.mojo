@@ -1,9 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The Python extension under the `dinara_align` package (see `dinara_align/__init__.py`): each function
+The Python extension under the `karan` package (see `karan/__init__.py`): each function
 takes the sequences as `str` and the costs, the mode and the options as tuples of integers, in the C
-API's fields (see `c/dinara.h`), and returns plain Python values. The package builds those tuples
+API's fields (see `c/karan.h`), and returns plain Python values. The package builds those tuples
 and wraps what comes back; this module is not meant to be called directly.
 
     pixi run build-python   # build/python: the package, this module and the runtime libraries it loads
@@ -13,7 +13,7 @@ from std.os import abort
 from std.python import Python, PythonObject
 from std.python.bindings import PythonModuleBuilder
 
-from dinara_align import (
+from karan import (
     DEFAULT_MAX_MEMORY,
     Aligner,
     Alignment,
@@ -36,18 +36,18 @@ from dinara_align import (
 )
 
 comptime C_ENDS_FREE = 0
-"""A mode tuple's kind for free ends, global among them (`DINARA_ENDS_FREE`)."""
+"""A mode tuple's kind for free ends, global among them (`KARAN_ENDS_FREE`)."""
 comptime C_EXTENSION = 1
-"""A mode tuple's kind for an extension from one end (`DINARA_EXTENSION`)."""
+"""A mode tuple's kind for an extension from one end (`KARAN_EXTENSION`)."""
 comptime C_LOCAL = 2
-"""A mode tuple's kind for a local alignment (`DINARA_LOCAL`)."""
+"""A mode tuple's kind for a local alignment (`KARAN_LOCAL`)."""
 
 
 @export
-def PyInit__dinara() abi("C") -> PythonObject:
-    """The `_dinara` module, its functions registered, which Python calls on import; a failure aborts."""
+def PyInit__karan() abi("C") -> PythonObject:
+    """The `_karan` module, its functions registered, which Python calls on import; a failure aborts."""
     try:
-        var module = PythonModuleBuilder("_dinara")
+        var module = PythonModuleBuilder("_karan")
         module.def_function[py_distance]("distance")
         module.def_function[py_align]("align")
         module.def_function[py_score]("score")
@@ -65,7 +65,7 @@ def PyInit__dinara() abi("C") -> PythonObject:
         )
         return module.finalize()
     except error:
-        abort(String("dinara_align: the extension failed to load: ", error))
+        abort(String("karan: the extension failed to load: ", error))
 
 
 def ints(fields: PythonObject) raises -> List[Int]:
@@ -78,7 +78,7 @@ def ints(fields: PythonObject) raises -> List[Int]:
 
 def costs_of(fields: PythonObject) raises -> Costs:
     """`(mismatch, opening, extension, opening2, extension2, deletion_opening, deletion_extension,
-    deletion_opening2, deletion_extension2)`, as `dinara_costs`."""
+    deletion_opening2, deletion_extension2)`, as `karan_costs`."""
     var at = ints(fields)
     var costs: Costs
     if at[3] < 0:
@@ -93,7 +93,7 @@ def costs_of(fields: PythonObject) raises -> Costs:
 
 def mode_of(fields: PythonObject) raises -> Mode:
     """`(kind, reference_start, reference_end, query_start, query_end, match_score, anchor, zdrop,
-    end_bonus)`, as `dinara_mode`, the last two -1 for none; for a `Scoring`, kind `C_LOCAL` with a match score of zero is `Mode.local()`.
+    end_bonus)`, as `karan_mode`, the last two -1 for none; for a `Scoring`, kind `C_LOCAL` with a match score of zero is `Mode.local()`.
     """
     var at = ints(fields)
     if at[0] == C_EXTENSION:
@@ -228,7 +228,7 @@ def align_through(
 
 
 struct PyAligner(Defaultable, Movable, Writable):
-    """`Aligner` for Python: one thread's memory kept from call to call (see `dinara_align.Aligner`)."""
+    """`Aligner` for Python: one thread's memory kept from call to call (see `karan.Aligner`)."""
 
     var aligner: Aligner
 

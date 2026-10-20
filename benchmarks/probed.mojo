@@ -2,19 +2,19 @@
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
 The runner of `profile.py probes`: `ours.mojo`'s `seq` protocol for one pair at a time, built with
-`-D DINARA_PROBES`, each row carrying a sixth field, a JSON object of the pair's probes (see
-`dinara_align/probes.mojo`) and of the counters read around it (see `counters.mojo`). A runner apart from
+`-D KARAN_PROBES`, each row carrying a sixth field, a JSON object of the pair's probes (see
+`karan/probes.mojo`) and of the counters read around it (see `counters.mojo`). A runner apart from
 `ours.mojo`, which must still build against libraries from before the probes (see `profile.py compare`).
 
-    mojo build -D DINARA_PROBES -I . benchmarks/probed.mojo -o <binary>
+    mojo build -D KARAN_PROBES -I . benchmarks/probed.mojo -o <binary>
     <binary> seq <tool> <budget seconds> <file.seq>...
 """
 
 from std.sys import argv
 from std.time import perf_counter_ns
 
-from dinara_align import Aligner, Costs
-from dinara_align.probes import PROBES
+from karan import Aligner, Costs
+from karan.probes import PROBES
 
 from counters import Counters
 from ours import peak_resident, SeqFile
@@ -26,7 +26,7 @@ def main() raises:
     `distance`."""
     if len(argv()) < 5 or String(argv()[1]) != "seq":
         raise Error("usage: probed seq <tool> <budget seconds> <file.seq>...")
-    comptime assert PROBES, "build with -D DINARA_PROBES"
+    comptime assert PROBES, "build with -D KARAN_PROBES"
     var tool = String(argv()[2])
     var affine = ":" in tool
     var costs = Costs.edit()

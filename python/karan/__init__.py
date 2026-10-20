@@ -1,17 +1,17 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Exact pairwise alignment of DNA, or any text, from Python: dinara-align's Mojo library.
+"""Exact pairwise alignment of DNA, or any text, from Python: karan's Mojo library.
 
->>> import dinara_align as da
->>> da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")
+>>> import karan
+>>> karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")
 2
->>> found = da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", da.Costs.affine(4, 6, 2))
+>>> found = karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", karan.Costs.affine(4, 6, 2))
 >>> found.cost, found.cigar
 (12, '4=3X6=')
->>> placed = da.align("TTTTACGTACGTTTTT", "ACGTACGT", da.Costs.affine(4, 6, 2), da.Mode.INFIX)
+>>> placed = karan.align("TTTTACGTACGTTTTT", "ACGTACGT", karan.Costs.affine(4, 6, 2), karan.Mode.INFIX)
 >>> placed.cigar, placed.reference_start, placed.reference_end
 ('8=', 4, 12)
->>> da.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", da.Costs.affine(4, 6, 2), da.Mode.local(2)).score
+>>> karan.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", karan.Costs.affine(4, 6, 2), karan.Mode.local(2)).score
 16
 
 Every call takes a reference and a query as `str` (or ASCII `bytes`), `Costs` that price each edit and
@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Optional, Sequence, Union
 
-from . import _dinara
+from . import _karan
 
 __all__ = [
     "Aligner",
@@ -55,7 +55,7 @@ UNBOUNDED = 1 << 60
 Text = Union[str, bytes]
 """A sequence as `str`, or as ASCII `bytes`."""
 
-# A mode's kind, as `dinara_mode` numbers it.
+# A mode's kind, as `karan_mode` numbers it.
 _ENDS, _EXTENSION, _LOCAL = 0, 1, 2
 
 
@@ -85,7 +85,7 @@ def _call(function, *args):
         return function(*args)
     except Exception as error:
         message = str(error)
-        raise ValueError(message.removeprefix("dinara-align: ")) from None
+        raise ValueError(message.removeprefix("karan: ")) from None
 
 
 @dataclass(frozen=True)
@@ -142,7 +142,7 @@ class Costs:
         )
 
     def _fields(self) -> tuple:
-        """The costs as the extension takes them, in `dinara_costs`'s order."""
+        """The costs as the extension takes them, in `karan_costs`'s order."""
         return _ints(
             self.mismatch,
             self.opening,
@@ -233,7 +233,7 @@ class Mode:
         return Mode(_ENDS, UNBOUNDED, UNBOUNDED, UNBOUNDED, UNBOUNDED, match_score)
 
     def _fields(self) -> tuple:
-        """The mode as the extension takes it, in `dinara_mode`'s order, free letters capped at `UNBOUNDED`."""
+        """The mode as the extension takes it, in `karan_mode`'s order, free letters capped at `UNBOUNDED`."""
         _ints(self.kind, self.reference_start, self.reference_end, self.query_start, self.query_end)
         _ints(self.match_score, self.anchor, self.zdrop, self.end_bonus)
         return (
@@ -413,7 +413,7 @@ class LocalScores:
 
 
 def _options(band: Optional[Band], max_cost: Optional[int], eqx: bool, ties: str, max_memory: Optional[int]) -> tuple:
-    """The options as the extension takes them, in `dinara_options`'s order and then whether there is a cap,
+    """The options as the extension takes them, in `karan_options`'s order and then whether there is a cap,
     0 for the default memory. Raises `ValueError` for a `ties` other than `"left"` or `"right"`."""
     if ties not in ("left", "right"):
         raise ValueError("ties: 'left' or 'right'")
@@ -444,7 +444,7 @@ def distance(
     """The least cost of aligning `query` to `reference` as `mode` asks, or None past `max_cost`."""
     options = _options(band, max_cost, True, "left", None)
     arguments = (_text(reference), _text(query), costs._fields(), mode._fields(), options)
-    return _call(_dinara.distance, *arguments)
+    return _call(_karan.distance, *arguments)
 
 
 def align(
@@ -464,11 +464,11 @@ def align(
     fronts kept for the traceback stay within `max_memory` bytes, about 80 MB by default. Under a
     `Scoring`, which takes no band, cap, tie rule or memory, Gotoh's walk picks among equals."""
     if isinstance(costs, Scoring):
-        found = _call(_dinara.scoring_align, _text(reference), _text(query), costs._fields(), mode._fields(), eqx)
+        found = _call(_karan.scoring_align, _text(reference), _text(query), costs._fields(), mode._fields(), eqx)
         return Alignment(*found)
     options = _options(band, max_cost, eqx, ties, max_memory)
     arguments = (_text(reference), _text(query), costs._fields(), mode._fields(), options)
-    found = _call(_dinara.align, *arguments)
+    found = _call(_karan.align, *arguments)
     return None if found is None else Alignment(*found)
 
 
@@ -478,7 +478,7 @@ class Aligner:
     a thread; the functions keep no state of their own, so any number of aligners work at once."""
 
     def __init__(self) -> None:
-        self._aligner = _dinara.Aligner()
+        self._aligner = _karan.Aligner()
 
     def distance(
         self,
@@ -526,9 +526,9 @@ def score(
     """The score `align` would return, with no alignment traced: the matches' reward less the costs,
     or minus the least cost with no reward; under a `Scoring`, its score."""
     if isinstance(costs, Scoring):
-        return _call(_dinara.scoring_score, _text(reference), _text(query), costs._fields(), mode._fields())
+        return _call(_karan.scoring_score, _text(reference), _text(query), costs._fields(), mode._fields())
     options = _options(band, None, True, "left", None)
-    return _call(_dinara.score, _text(reference), _text(query), costs._fields(), mode._fields(), options)
+    return _call(_karan.score, _text(reference), _text(query), costs._fields(), mode._fields(), options)
 
 
 def local_scores(
@@ -537,7 +537,7 @@ def local_scores(
     """For `Mode.local(...)`: the best score and its end, and SSW's second best, more than `window`
     reference letters away, half the query and at least 15 by default."""
     found = _call(
-        _dinara.local_scores, _text(reference), _text(query), costs._fields(), mode._fields(), -1 if window is None else window
+        _karan.local_scores, _text(reference), _text(query), costs._fields(), mode._fields(), -1 if window is None else window
     )
     return LocalScores(*found)
 
@@ -560,7 +560,7 @@ def distances(
         costs._fields(),
         mode._fields(),
     )
-    return _call(_dinara.distances, *arguments, options, _ints(threads)[0])
+    return _call(_karan.distances, *arguments, options, _ints(threads)[0])
 
 
 def alignments(
@@ -584,7 +584,7 @@ def alignments(
         costs._fields(),
         mode._fields(),
     )
-    found = _call(_dinara.alignments, *arguments, options, _ints(threads)[0])
+    found = _call(_karan.alignments, *arguments, options, _ints(threads)[0])
     return [None if item is None else Alignment(*item) for item in found]
 
 
@@ -617,5 +617,5 @@ def search(
     if best is not None and _ints(best)[0] < 0:
         raise ValueError(f"a best of {best} hits")
     arguments = ([_text(item) for item in references], _text(query), costs._fields(), mode._fields())
-    found = _call(_dinara.search, *arguments, options, (-1 if best is None else _ints(best)[0], aligned, _ints(threads)[0]))
+    found = _call(_karan.search, *arguments, options, (-1 if best is None else _ints(best)[0], aligned, _ints(threads)[0]))
     return [Hit(index, score, None if alignment is None else Alignment(*alignment)) for index, score, alignment in found]

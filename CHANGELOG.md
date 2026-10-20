@@ -10,6 +10,9 @@ line.
 
 Licensed under the Mozilla Public License 2.0 (see LICENSE and NOTICE).
 
+Formerly dinara-align: the project, the Mojo and Python packages (`karan`), the command line (`karan`)
+and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all take the one name.
+
 ### Alignment
 
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
@@ -41,7 +44,7 @@ Licensed under the Mozilla Public License 2.0 (see LICENSE and NOTICE).
 - Every call runs on its caller's own thread and starts none unless asked (`threads`), and keeps no
   state between calls, so an application calls it from as many threads as it likes and spreads its
   work itself. An `Aligner`, one a thread, keeps its searches' memory from call to call; in C,
-  `dinara_aligner_new`, and in C++ and Python, `Aligner`. The command line spreads its pairs over
+  `karan_aligner_new`, and in C++ and Python, `Aligner`. The command line spreads its pairs over
   every thread itself.
 - What a SAM record holds: soft- or hard-clipped CIGARs, `NM`, `MD`, identity
   (`Alignment.clipped_cigar`, `edit_distance`, `mismatch_string`, `identity`), and SSW's second-best
@@ -49,12 +52,12 @@ Licensed under the Mozilla Public License 2.0 (see LICENSE and NOTICE).
 
 ### Interfaces
 
-- A C API with a C++ wrapper (`c/dinara.h`, `pixi run build-c`), batches included: a batch or a
+- A C API with a C++ wrapper (`c/karan.h`, `pixi run build-c`), batches included: a batch or a
   search asked for threads starts its own, so the caller's threads may each ask at once; a length
-  below zero is `DINARA_INVALID_LENGTH`.
+  below zero is `KARAN_INVALID_LENGTH`.
 - A Python package (`pixi run build-python`, `pixi run build-wheel`), any CPython 3: sequences
   ASCII `str` or `bytes`, anything else refused.
-- A command-line aligner, `dinara-align` (`pixi run build-cli`): FASTA, FASTQ or pairs in, a table,
+- A command-line aligner, `karan` (`pixi run build-cli`): FASTA, FASTQ or pairs in, a table,
   SAM or PAF out.
 
 ### Quality

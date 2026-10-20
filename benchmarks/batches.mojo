@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The side of `batch_bench.py` dinara-align runs: a whole batch of global costs, on one thread or on
+The side of `batch_bench.py` karan runs: a whole batch of global costs, on one thread or on
 `threads` of them.
 
     mojo build -I . benchmarks/batches.mojo -o <binary> && <binary> <pairs file> <workload> [threads]
@@ -17,7 +17,7 @@ sum of the costs, as `batches/rivals.cpp` prints them.
 
 Where a GPU answers, the affine workload is scored there too, by `scores` at the same scores as a
 match 0, a mismatch -1 and a gap of `k` letters `-(2 + k)`, each pair's cost its score negated: a row
-of its own, `dinara-align GPU`, the faster of five passes after three that bring the device's clocks
+of its own, `karan GPU`, the faster of five passes after three that bring the device's clocks
 up from idle. Its time is the call's: packing the batch, copying it over, scoring, copying back.
 """
 
@@ -30,8 +30,8 @@ from std.atomic import Atomic
 from std.os import abort
 from max.algorithm import parallelize
 
-from dinara_align import Costs, Mode, Placement, Scoring, distances, scores
-from dinara_align.common import next_share
+from karan import Costs, Mode, Placement, Scoring, distances, scores
+from karan.common import next_share
 
 
 def main() raises:
@@ -96,7 +96,7 @@ def main() raises:
         for index in range(len(found)):
             total += found[index]
             weighted += (index + 1) * found[index]
-    print("dinara-align", workload, best, String(total, ":", weighted), sep="\t")
+    print("karan", workload, best, String(total, ":", weighted), sep="\t")
     comptime if has_accelerator():
         if workload == "illumina-affine" and threads > 1:
             var scoring = Scoring.uniform(0, -1, -2, -1)
@@ -114,4 +114,4 @@ def main() raises:
                 for index in range(len(found)):
                     total -= found[index]
                     weighted -= (index + 1) * found[index]
-            print("dinara-align GPU", workload, fastest, String(total, ":", weighted), sep="\t")
+            print("karan GPU", workload, fastest, String(total, ":", weighted), sep="\t")

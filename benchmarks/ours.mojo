@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The dinara-align runner of `bench.py`, speaking the `seq` protocol every runner there speaks (see
+The karan runner of `bench.py`, speaking the `seq` protocol every runner there speaks (see
 `harness.run_tool`).
 
     mojo build -I . benchmarks/ours.mojo -o <binary> && <binary> seq <tool> <budget seconds> <file.seq>...
@@ -13,7 +13,7 @@ from std.os.path import getsize
 from std.sys.info import CompilationTarget
 from std.time import perf_counter_ns
 
-from dinara_align import Aligner, Costs, alignments
+from karan import Aligner, Costs, alignments
 
 
 struct SeqFile:

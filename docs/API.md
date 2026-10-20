@@ -1,6 +1,6 @@
 # API reference
 
-Everything `dinara_align` exports, from its docstrings; regenerate with `pixi run api-docs`.
+Everything `karan` exports, from its docstrings; regenerate with `pixi run api-docs`.
 
 Exact pairwise alignment of DNA, or any text, on the CPU and the GPU.
 
@@ -11,7 +11,7 @@ band doubling with its seed heuristic finds them; any other costs, and every oth
 wavefront from both ends, after WFA. Every answer is exact.
 
 ```mojo
-from dinara_align import Anchor, Band, Costs, Mode, Ties, align, alignments, distance, distances
+from karan import Anchor, Band, Costs, Mode, Ties, align, alignments, distance, distances
 
 var edits = distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")  # 2
 var aligned = align("ACGTACGTTTGCA", "ACGTCGTTTTGCA")  # cost 2, cigar "4=1D2=1I6="
@@ -78,7 +78,7 @@ when the matrix is large; and with free ends or as an extension on the CPU, its 
 and aligned globally:
 
 ```mojo
-from dinara_align import Mode, Scoring, align, score
+from karan import Mode, Scoring, align, score
 
 var scoring = Scoring.dna()  # minimap2's: match 2, mismatch -4, a gap of k letters -(4 + 2k)
 var found = align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", scoring)  # an Alignment, its cost minus its score
@@ -366,7 +366,7 @@ A failed call: which way it failed, and what it failed on, the value or the inpu
 def write_to(self, mut writer: T)
 ```
 
-`dinara-align: <phrase> [<detail>]`, the form the C API, the Python package and the command line pass on.
+`karan: <phrase> [<detail>]`, the form the C API, the Python package and the command line pass on.
 
 ### `ErrorKind`
 

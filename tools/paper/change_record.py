@@ -7,12 +7,12 @@ DT_ITEMS = [
  "<b>Fronts eight at a time.</b> Fronts are padded with unreached diagonals and stepped eight diagonals at a time with branch-free validity masks, the step in a function of its own. A step costs about 1.3 ns, down from 5. The two-ended distance checks the fronts' overlap with vector compares and takes about half the steps.",
  "<b>Budgets.</b> A step costs about 1.3 ns and a band column about 6 ns, so the diagonal transition gets a step budget proportional to the band it would replace. Cutting the alignment budget from 12 to 5 steps a column took 10 kbp pairs at 5% from 241 to 144 µs.",
  "<b>One front or two.</b> The switch between one front and two from both ends was fitted on 1,300 pairs of 1 to 30 kbp. The CIGAR is written straight from the fronts.",
- "<b>Short pairs stay.</b> A pair of up to 2,048 columns had its band aimed wide over the whole matrix, and 42% of such pairs went to a band the diagonal transition would have beaten. Such a band is now charged 30,000 steps more. ont-1k became 25% faster on the Skylake-X, 42.3 to 31.8 ms over 1,221 reads, which put dinara-align ahead of WFA on short reads.",
+ "<b>Short pairs stay.</b> A pair of up to 2,048 columns had its band aimed wide over the whole matrix, and 42% of such pairs went to a band the diagonal transition would have beaten. Such a band is now charged 30,000 steps more. ont-1k became 25% faster on the Skylake-X, 42.3 to 31.8 ms over 1,221 reads, which put karan ahead of WFA on short reads.",
  "<b>Short noisy pairs.</b> A short noisy pair gives up the diagonal search for the whole matrix: a 1 kbp pair at 15% fell from 19.2 to 11.8 µs. A short pair's first bound is 1.7 times its projection, at most 128 past it.",
 ]
 
 METHODS_UNIT = [
- ("p", "Trusting a projection.", "The probe projects the distance from its first edits. Real reads gather their errors at the ends, so that projection can be hundreds of times too high: a 30 kbp SARS-CoV-2 pair at distance 49 was projected at 14,448 and swept whole. dinara-align therefore treats a projection with suspicion:"),
+ ("p", "Trusting a projection.", "The probe projects the distance from its first edits. Real reads gather their errors at the ends, so that projection can be hundreds of times too high: a 30 kbp SARS-CoV-2 pair at distance 49 was projected at 14,448 and swept whole. karan therefore treats a projection with suspicion:"),
  ("ul", [
    "The diagonal transition gives up on its projection only after spending a twenty-fourth of what the cheapest band would cost.",
    "A projection aims the band only when the one-front projection from the first edits and the search's projection from many more agree within a third.",
@@ -120,14 +120,14 @@ SUPPLEMENT = [
 
 # ---------------------------------------------------------------------------------------------- rendering
 def html_text(t):
-    t = t.replace("dinara-align", '<span class="sys">dinara-align</span>')
+    t = t.replace("karan", '<span class="sys">karan</span>')
     for unit in ("µs", "ms", "kbp", "Mbp", "MB", "KB", "bp", "s"):
         t = re.sub(r"(\d) " + unit + r"\b", r"\1&nbsp;" + unit, t)
     return t
 
 def tex_text(t):
     t = t.replace("<b>", "\\textbf{").replace("</b>", "}")
-    t = t.replace("dinara-align", "\\dinara{}")
+    t = t.replace("karan", "\\karan{}")
     t = t.replace("%", "\\%").replace("→", "$\\to$").replace("×", "$\\times$").replace("≤", "$\\le$")
     t = t.replace("µs", "\\textmu s").replace("*", "*")
     t = re.sub(r"\\\((.*?)\\\)", lambda m: "$" + m.group(1) + "$", t)

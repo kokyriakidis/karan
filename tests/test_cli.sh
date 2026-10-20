@@ -2,14 +2,14 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# The command-line aligner (see cli/dinara_align_cli.mojo) on a small reference and reads: each output
+# The command-line aligner (see cli/karan_cli.mojo) on a small reference and reads: each output
 # format, both strands, a cap, and a refusal.
 #
 #     pixi run test-cli
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-cli=$root/build/cli/dinara-align
+cli=$root/build/cli/karan
 work=$(mktemp -d)
 trap 'rm -r "$work"' EXIT
 printf ">chr\nTTTTTTTTTTACGTACGTTTGCAGGATCCAGTTTTTTTTTT\n" >"$work/ref.fa"

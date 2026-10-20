@@ -1,6 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""The Python package (python/dinara_align) against known answers, its own docstring's examples, and a
+"""The Python package (python/karan) against known answers, its own docstring's examples, and a
 small full-matrix oracle of its own, sharing no code with the library.
 
     pixi run test-python
@@ -10,7 +10,7 @@ import doctest
 import random
 import sys
 
-import dinara_align as da
+import karan
 
 
 def edit_distance(a: str, b: str) -> int:
@@ -23,7 +23,7 @@ def edit_distance(a: str, b: str) -> int:
     return row[-1]
 
 
-def rows_cost(top: str, bottom: str, costs: da.Costs) -> int:
+def rows_cost(top: str, bottom: str, costs: karan.Costs) -> int:
     """What two gapped rows cost: substitutions, and each gap run at its side's cheaper piece."""
     total, index = 0, 0
     while index < len(top):
@@ -64,53 +64,53 @@ def mutated(text: str, rate: float, rng: random.Random) -> str:
 
 def main() -> None:
     """Runs every check, the package's own examples first; a failed one raises."""
-    failures, tried = doctest.testmod(da)
+    failures, tried = doctest.testmod(karan)
     assert failures == 0, f"{failures} of the package's examples failed"
 
-    assert da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA") == 2
-    found = da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA")
+    assert karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA") == 2
+    found = karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA")
     assert (found.cost, found.cigar) == (2, "4=1D2=1I6=")
-    assert da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", eqx=False).cigar == "4M1D2M1I6M"
-    assert da.align("ACGTTTTACG", "ACGTTTACG", da.Costs.affine(4, 6, 2)).cigar == "3=1D6="
-    assert da.align("ACGTTTTACG", "ACGTTTACG", da.Costs.affine(4, 6, 2), ties="right").cigar == "6=1D3="
-    assert da.align(b"ACGT", b"ACGT").cigar == "4="
-    affine = da.Costs.affine(4, 6, 2)
-    assert da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=11) is None
-    assert da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=12).cigar == "4=3X6="
-    assert da.distance("AAAACCCC", "CCCCAAAA", affine, band=da.Band.around(0)) == 32
-    assert da.score("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == -12
-    two = da.Costs.two_piece(4, 6, 2, 24, 1)
+    assert karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", eqx=False).cigar == "4M1D2M1I6M"
+    assert karan.align("ACGTTTTACG", "ACGTTTACG", karan.Costs.affine(4, 6, 2)).cigar == "3=1D6="
+    assert karan.align("ACGTTTTACG", "ACGTTTACG", karan.Costs.affine(4, 6, 2), ties="right").cigar == "6=1D3="
+    assert karan.align(b"ACGT", b"ACGT").cigar == "4="
+    affine = karan.Costs.affine(4, 6, 2)
+    assert karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=11) is None
+    assert karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=12).cigar == "4=3X6="
+    assert karan.distance("AAAACCCC", "CCCCAAAA", affine, band=karan.Band.around(0)) == 32
+    assert karan.score("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == -12
+    two = karan.Costs.two_piece(4, 6, 2, 24, 1)
     gapped = "GATTACAGCTTGCA" + "C" * 30 + "TGGACCATGAGTCA"
-    assert da.distance(gapped, "GATTACAGCTTGCATGGACCATGAGTCA", two) == 54
-    assert da.distance("ACGACGT", "ACGTACGT", affine.with_deletions(20, 5)) == 8
-    assert da.distance("ACGTACGT", "ACGACGT", affine.with_deletions(20, 5)) == 25
+    assert karan.distance(gapped, "GATTACAGCTTGCATGGACCATGAGTCA", two) == 54
+    assert karan.distance("ACGACGT", "ACGTACGT", affine.with_deletions(20, 5)) == 8
+    assert karan.distance("ACGTACGT", "ACGACGT", affine.with_deletions(20, 5)) == 25
     # Every mode, and the SAM fields.
-    core = da.align("GGGGACGTACGTGGGG", "CCCCACGTTCGTCC", affine, da.Mode.local(2))
+    core = karan.align("GGGGACGTACGTGGGG", "CCCCACGTTCGTCC", affine, karan.Mode.local(2))
     assert core.cigar == "4=1X3=" and core.clipped_cigar(14) == "4S4=1X3=2S"
     assert core.mismatch_string("GGGGACGTACGTGGGG", "CCCCACGTTCGTCC") == "4A3"
     assert core.edit_distance("GGGGACGTACGTGGGG", "CCCCACGTTCGTCC") == 1
-    assert da.align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, da.Mode.overlap(2)).reference_start == 5
-    onward = da.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, da.Mode.extension(1))
+    assert karan.align("TTTTTACGTACGT", "ACGTACGTGGGGG", affine, karan.Mode.overlap(2)).reference_start == 5
+    onward = karan.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, karan.Mode.extension(1))
     assert (onward.score, onward.cigar) == (12, "12=")
-    assert da.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, da.Mode.extension(1, zdrop=5)).score == 12
+    assert karan.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, karan.Mode.extension(1, zdrop=5)).score == 12
     # With an end bonus past what stopping short gains, the read is aligned to its end, at its own score.
-    whole = da.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, da.Mode.extension(1, end_bonus=1000))
+    whole = karan.align("ACGTTGCAAGGCTTTT", "ACGTTGCAAGGCGAGA", affine, karan.Mode.extension(1, end_bonus=1000))
     assert whole.query_end == 16 and whole.score < 12, whole
-    scores = da.local_scores("ACGTACGTAC" + "T" * 20 + "ACGTACGTAC", "ACGTACGTAC", affine, da.Mode.local(2), window=5)
+    scores = karan.local_scores("ACGTACGTAC" + "T" * 20 + "ACGTACGTAC", "ACGTACGTAC", affine, karan.Mode.local(2), window=5)
     assert (scores.score, scores.second_score, scores.second_reference_end) == (20, 20, 10)
-    dna = da.Scoring.dna()
-    assert da.score("TTTTACGTACGTTTTT", "ACGTACGT", dna, da.Mode.local()) == 16
-    placed = da.align("TTTTACGTACGTTTTT", "ACGTACGT", dna, da.Mode.INFIX)
+    dna = karan.Scoring.dna()
+    assert karan.score("TTTTACGTACGTTTTT", "ACGTACGT", dna, karan.Mode.local()) == 16
+    placed = karan.align("TTTTACGTACGTTTTT", "ACGTACGT", dna, karan.Mode.INFIX)
     assert (placed.score, placed.reference_start, placed.cigar) == (16, 4, "8=")
-    blosum_like = da.Scoring.tabulated("ACGT", [5, -1, -2, -1, -1, 5, -3, -2, -2, -3, 5, -1, -1, -2, -1, 5], -6, -1)
-    assert da.align("ACGTAC", "ACGTAC", blosum_like).score == 30
+    blosum_like = karan.Scoring.tabulated("ACGT", [5, -1, -2, -1, -1, 5, -3, -2, -2, -3, 5, -1, -1, -2, -1, 5], -6, -1)
+    assert karan.align("ACGTAC", "ACGTAC", blosum_like).score == 30
     try:
-        da.align("A", "C", da.Costs.affine(0, 6, 2))
+        karan.align("A", "C", karan.Costs.affine(0, 6, 2))
         raise AssertionError("free mismatches were not refused")
     except ValueError:
         pass
     try:
-        da.distance("ACGT", "ACGT", affine, da.Mode.local(2))
+        karan.distance("ACGT", "ACGT", affine, karan.Mode.local(2))
         raise AssertionError("a local distance was not refused")
     except ValueError:
         pass
@@ -124,46 +124,46 @@ def main() -> None:
         query = mutated(reference, [0.0, 0.05, 0.2, 0.5][trial % 4], rng)
         references.append(reference)
         queries.append(query)
-        assert da.distance(reference, query) == edit_distance(reference, query)
-        for costs in (da.Costs.edit(), affine, two, affine.with_deletions(9, 1)):
-            found = da.align(reference, query, costs)
+        assert karan.distance(reference, query) == edit_distance(reference, query)
+        for costs in (karan.Costs.edit(), affine, two, affine.with_deletions(9, 1)):
+            found = karan.align(reference, query, costs)
             top, bottom = found.gapped(reference, query)
             assert top.replace("-", "") == reference and bottom.replace("-", "") == query
-            assert rows_cost(top, bottom, costs) == found.cost == da.distance(reference, query, costs)
+            assert rows_cost(top, bottom, costs) == found.cost == karan.distance(reference, query, costs)
     for threads in (2, 0):
-        assert da.distances(references, queries, affine, threads=threads) == [
-            da.distance(r, q, affine) for r, q in zip(references, queries)
+        assert karan.distances(references, queries, affine, threads=threads) == [
+            karan.distance(r, q, affine) for r, q in zip(references, queries)
         ]
-        assert [a.cigar for a in da.alignments(references, queries, affine, da.Mode.INFIX, threads=threads)] == [
-            da.align(r, q, affine, da.Mode.INFIX).cigar for r, q in zip(references, queries)
+        assert [a.cigar for a in karan.alignments(references, queries, affine, karan.Mode.INFIX, threads=threads)] == [
+            karan.align(r, q, affine, karan.Mode.INFIX).cigar for r, q in zip(references, queries)
         ]
     # One thread's aligner, reused pair after pair, gives what the functions give.
-    aligner = da.Aligner()
+    aligner = karan.Aligner()
     for r, q in zip(references, queries):
         for ties in ("left", "right"):
-            assert aligner.align(r, q, affine, ties=ties).cigar == da.align(r, q, affine, ties=ties).cigar
-        assert aligner.distance(r, q, two, da.Mode.INFIX) == da.distance(r, q, two, da.Mode.INFIX)
-        assert aligner.distance(r, q, affine, max_cost=30) == da.distance(r, q, affine, max_cost=30)
-    capped = da.distances(references, queries, affine, max_cost=30)
-    assert all((c is None) == (da.distance(r, q, affine) > 30) for c, r, q in zip(capped, references, queries))
-    hits = da.search(["TTTT", "ACGTACGTACGT", "ACGTTCGTACGT"], "ACGTACGTACGT", affine, da.Mode.local(2), best=2, aligned=True)
+            assert aligner.align(r, q, affine, ties=ties).cigar == karan.align(r, q, affine, ties=ties).cigar
+        assert aligner.distance(r, q, two, karan.Mode.INFIX) == karan.distance(r, q, two, karan.Mode.INFIX)
+        assert aligner.distance(r, q, affine, max_cost=30) == karan.distance(r, q, affine, max_cost=30)
+    capped = karan.distances(references, queries, affine, max_cost=30)
+    assert all((c is None) == (karan.distance(r, q, affine) > 30) for c, r, q in zip(capped, references, queries))
+    hits = karan.search(["TTTT", "ACGTACGTACGT", "ACGTTCGTACGT"], "ACGTACGTACGT", affine, karan.Mode.local(2), best=2, aligned=True)
     assert [hit.index for hit in hits] == [1, 2] and hits[0].score == 24 and hits[0].alignment.cigar == "12="
     # What the swarm found: costs the library refuses are refused, not dropped; a negative cap still checks
     # the call first; a best of zero keeps no hit.
-    for bad in (lambda: da.Costs.two_piece(4, 6, 2, -5, 1), lambda: da.Costs.affine(4, 6, 2).with_deletions(6, 0)):
+    for bad in (lambda: karan.Costs.two_piece(4, 6, 2, -5, 1), lambda: karan.Costs.affine(4, 6, 2).with_deletions(6, 0)):
         try:
             bad()
             raise AssertionError("invalid costs accepted")
         except ValueError:
             pass
-    assert da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", max_cost=-1) is None
+    assert karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", max_cost=-1) is None
     try:
-        da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", da.Costs.affine(4, 6, 2), da.Mode.local(2), max_cost=-1)
+        karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", karan.Costs.affine(4, 6, 2), karan.Mode.local(2), max_cost=-1)
         raise AssertionError("a cap on a local alignment accepted")
     except ValueError:
         pass
-    assert da.search(["TTTT", "ACGTACGTACGT"], "ACGTACGTACGT", best=0) == []
-    assert len(da.search(["TTTT", "ACGTACGTACGT"], "ACGTACGTACGT")) == 2
+    assert karan.search(["TTTT", "ACGTACGTACGT"], "ACGTACGTACGT", best=0) == []
+    assert len(karan.search(["TTTT", "ACGTACGTACGT"], "ACGTACGTACGT")) == 2
 
     print(f"Python package: every check passed, {tried} examples of its own among them")
 

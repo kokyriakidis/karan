@@ -1,10 +1,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-WFA2-lib's regression set through dinara-align, run with `pixi run test-wfa` (see `scripts/test_wfa.py`).
+WFA2-lib's regression set through karan, run with `pixi run test-wfa` (see `scripts/test_wfa.py`).
 
 WFA2-lib ships 305 pairs (`tests/wfa.utest.seq`) and its own results for each mode it tests
-(`tests/wfa.utest.check`), a score and a CIGAR a pair. Each mode dinara-align offers is held to them:
+(`tests/wfa.utest.check`), a score and a CIGAR a pair. Each mode karan offers is held to them:
 the edit and indel distances, gap-affine costs at four penalties, three more with a match reward, and
 two-piece gap-affine costs. Every score must equal WFA2-lib's, and every CIGAR must consume both
 sequences exactly, its `M` a match and its `X` a mismatch, and cost the expected score when priced
@@ -14,14 +14,14 @@ Every gap-affine mode must also give WFA2-lib's CIGAR byte for byte under `Ties.
 for ties: the indel distance as costs (3, 0, 1), which give it exactly and never a substitution, and the
 modes with a match reward by the costs WFA2-lib folds the reward into. Those run with no memory limit,
 so no pair is split (see `gap_affine.solve`); and the edit distance's `align` with `Ties.RIGHT`,
-whichever of its searches finds the distance. Its approximate heuristic modes, which dinara-align does
+whichever of its searches finds the distance. Its approximate heuristic modes, which karan does
 not offer, are left out.
 """
 
 from std.sys import argv
 
-from dinara_align import Band, Costs, Mode, Placement, Scoring, Ties, align, distance
-from dinara_align.gap_affine import (
+from karan import Band, Costs, Mode, Placement, Scoring, Ties, align, distance
+from karan.gap_affine import (
     EndsFree,
     FREE_START,
     Penalties,

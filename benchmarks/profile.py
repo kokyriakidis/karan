@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Pinpoints where dinara-align spends its time, where it could spend less, and where a rival beats it,
+"""Pinpoints where karan spends its time, where it could spend less, and where a rival beats it,
 dataset by dataset and pair by pair, on the samples `bench.py` times.
 
-    pixi run profile duel [--affine 4,6,2]   # every pair against every rival: where dinara-align loses
+    pixi run profile duel [--affine 4,6,2]   # every pair against every rival: where karan loses
     pixi run profile rivals                  # the lost pairs, ours and the winner's hardware counts side by side
     pixi run profile regret --only ont-10k   # every pair under every engine policy: what each choice cost
     pixi run profile probes --only ont-10k   # per pair: engine, phases, work, counters, allocations, copies
@@ -16,24 +16,24 @@ dataset by dataset and pair by pair, on the samples `bench.py` times.
     pixi run profile compare main~1          # this checkout against a commit, pair by pair, with intervals
     pixi run profile all                     # every view but compare, one report
 
-`duel` times dinara-align over `--rounds` rounds and sets each pair's median beside every rival's time for
+`duel` times karan over `--rounds` rounds and sets each pair's median beside every rival's time for
 the same pair, the rivals' kept results (`harness.measure`) or a fresh run of them. A dataset's mean can
 win while single pairs lose: the report lists, for each dataset, the margin over the fastest rival, the
-pairs some rival aligned faster, those it aligned faster than dinara-align's fastest round (beyond its
+pairs some rival aligned faster, those it aligned faster than karan's fastest round (beyond its
 own noise), the time those losses cost, and the worst of them with their length, cost and divergence.
-`rivals` then counts each such pair alone, for dinara-align and for the rival that won it (the pair run
+`rivals` then counts each such pair alone, for karan and for the rival that won it (the pair run
 once and many times, the difference per copy): more instructions mean more work, the same instructions at
 a lower IPC slower work.
 
 `regret` builds the runner once with the library's own choices and once with each policy forced
-(`-D DINARA_FORCE`, see `dinara_align/probes.mojo`: band without diagonal transition, diagonal transition
+(`-D KARAN_FORCE`, see `karan/probes.mojo`: band without diagonal transition, diagonal transition
 to its limit, the whole matrix, each kind of seeds; at gap-affine costs the difference sweep from the
 start, never, or both searches from the start), times every pair under each, holds each policy's costs to
 the default's, and reports the time the default would save by taking, pair by pair, the policy that beat
 it beyond noise: the cost of every choice the library makes, and the pairs and features where it chose
 wrong.
 
-`probes` builds `probed.mojo` with `-D DINARA_PROBES`, which records per pair the engine that settled it,
+`probes` builds `probed.mojo` with `-D KARAN_PROBES`, which records per pair the engine that settled it,
 the time each phase took and the instructions and cycles it retired (`rdpmc` on Linux x86), and the work
 it did: diagonal-transition steps, band rounds and the bounds they tried against the distance found,
 tiles swept and recomputed, seeds built and pruned, wavefront costs and sweep cells. Around each pair it
@@ -191,7 +191,7 @@ def mojo_build(root: Path, source: Path, binary: Path, extra: list = (), mitigat
     binary.parent.mkdir(parents=True, exist_ok=True)
     command = ["mojo", "build", *extra, "-I", str(root), str(source), "-o", str(binary), *mojo_cpu_args()]
     stamp = binary.with_name(binary.name + ".command")
-    sources = [*source.parent.glob("*.mojo"), *(root / "dinara_align").rglob("*.mojo")]
+    sources = [*source.parent.glob("*.mojo"), *(root / "karan").rglob("*.mojo")]
     assembled = (mitigated or pad) and x86() and shutil.which("clang") and shutil.which("cc")
     signature = " ".join(command) + (f" assembled mitigated={mitigated} pad={pad}" if assembled else "")
     if (
@@ -244,7 +244,7 @@ def checkout(reference: str) -> tuple[Path, str]:
     """The library at `reference`, a commit or `.` for this checkout as it stands, and a label for it: a
     detached worktree under the cache, made once per commit."""
     if reference == ".":
-        dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", "dinara_align"],
+        dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", "karan"],
                                capture_output=True, text=True, check=True).stdout.strip()
         head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, check=True).stdout.strip()
@@ -252,10 +252,13 @@ def checkout(reference: str) -> tuple[Path, str]:
     sha = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", f"{reference}^{{commit}}"],
                          capture_output=True, text=True, check=True).stdout.strip()
     tree = WORKTREES / sha[:12]
-    if not (tree / "dinara_align").exists():
+    if not tree.exists():
         WORKTREES.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(tree), sha], check=True,
                        capture_output=True)
+    # Before the rename the package was `dinara_align`; the runners import `karan`.
+    if not (tree / "karan").exists() and (tree / "dinara_align").exists():
+        (tree / "karan").symlink_to("dinara_align")
     return tree, sha[:9]
 
 
@@ -281,9 +284,9 @@ def samples(options) -> list[tuple[str, Path, dict]]:
 def ours_tool(options) -> str:
     """The name the runner takes for one pair at a time, at the costs asked for."""
     if options.affine:
-        return f"dinara-align:{options.affine}"
+        return f"karan:{options.affine}"
     # The distance alone, no traceback (see `ours.mojo`), with `--distance`.
-    return bench.dinara("1 thread") + (" distance" if options.distance else "")
+    return bench.karan("1 thread") + (" distance" if options.distance else "")
 
 
 def rounds_of(binary: Path, tool: str, path: Path, options) -> list[list[tuple]]:
@@ -320,7 +323,7 @@ def per_pair(runs: list[list[tuple]]) -> list[dict]:
 def rival_tools(name: str, options, runners: dict) -> list[tuple[str, Path, str]]:
     """The rivals `bench.py` would run on dataset `name`, at the costs asked for."""
     chosen = bench.affine_tools(options.affine, runners) if options.affine else bench.unit_tools(name, runners)
-    return [tool for tool in chosen if not tool[0].startswith("dinara-align")]
+    return [tool for tool in chosen if not tool[0].startswith("karan")]
 
 
 def rival_runners(options) -> dict:
@@ -340,27 +343,27 @@ def rival_runners(options) -> dict:
 
 
 def duel(options) -> str:
-    """dinara-align against every rival, pair by pair, on every sample; returns the report."""
+    """karan against every rival, pair by pair, on every sample; returns the report."""
     harness.REMEASURE = options.fresh
     runners = rival_runners(options)
     kept = harness.load_kept()
     tool = ours_tool(options)
     lines = [
-        f"# Duel: dinara-align against every rival, pair by pair{', at ' + options.affine if options.affine else ''}",
+        f"# Duel: karan against every rival, pair by pair{', at ' + options.affine if options.affine else ''}",
         "",
         harness.build_note().strip(),
         "",
-        f"dinara-align's time per pair is its median over {options.rounds} rounds; each rival's is its kept time"
-        " (one run). *Margin*: the fastest rival's mean over dinara-align's on the pairs both finished. *Lost*: pairs"
-        " some rival aligned faster; *beyond noise*: faster than dinara-align's fastest round. *Cost of losses*: the"
-        " time dinara-align would save by matching the fastest rival on every pair it lost, as a share of its total.",
+        f"karan's time per pair is its median over {options.rounds} rounds; each rival's is its kept time"
+        " (one run). *Margin*: the fastest rival's mean over karan's on the pairs both finished. *Lost*: pairs"
+        " some rival aligned faster; *beyond noise*: faster than karan's fastest round. *Cost of losses*: the"
+        " time karan would save by matching the fastest rival on every pair it lost, as a share of its total.",
         "",
-        "| dataset | pairs | dinara-align mean | fastest rival | margin | lost | beyond noise | cost of losses |",
+        "| dataset | pairs | karan mean | fastest rival | margin | lost | beyond noise | cost of losses |",
         "| :-- | --: | --: | :-- | --: | --: | --: | --: |",
     ]
     details, worst_lines, everything = [], [], {}
     for name, path, facts in samples(options):
-        print(f"{name}: dinara-align, {options.rounds} rounds ...", file=sys.stderr, flush=True)
+        print(f"{name}: karan, {options.rounds} rounds ...", file=sys.stderr, flush=True)
         ours = per_pair(rounds_of(runners["ours"], tool, path, options))
         rivals = {}
         for column, binary, rival in rival_tools(name, options, runners):
@@ -377,7 +380,7 @@ def duel(options) -> str:
         if not ours:
             lines.append(f"| {name} | {facts['pairs']} | t.o. | | | | | |")
             continue
-        # The fastest rival by mean over the pairs both it and dinara-align finished.
+        # The fastest rival by mean over the pairs both it and karan finished.
         best, margin = None, math.inf
         for column, (rows, _) in rivals.items():
             common = min(len(rows), len(ours))
@@ -423,9 +426,9 @@ def duel(options) -> str:
         "",
         f"## The pairs lost by the most time (at most {options.worst} a dataset)",
         "",
-        "Divergence is the cost over the longer sequence. Ratio: dinara-align's time over the rival's.",
+        "Divergence is the cost over the longer sequence. Ratio: karan's time over the rival's.",
         "",
-        "| dataset | pair | length | cost | divergence | dinara-align | fastest rival | ratio | beyond noise |",
+        "| dataset | pair | length | cost | divergence | karan | fastest rival | ratio | beyond noise |",
         "| :-- | --: | --: | --: | --: | --: | --: | --: | :-: |",
         *worst_lines,
     ]
@@ -594,14 +597,14 @@ def explain(name: str, path: Path, binaries: dict, base_label: str, head_label: 
 
 UNIT_POLICIES = ["", "band", "diagonal", "full", "seeds-none", "seeds-exact", "seeds-inexact", "one-ended",
                  "two-ended", "aim-search", "trace-wavefront", "trace-recompute"]
-"""The policies `regret` times at unit costs, "" the library's own choices (see `dinara_align.probes.FORCE`)."""
+"""The policies `regret` times at unit costs, "" the library's own choices (see `karan.probes.FORCE`)."""
 AFFINE_POLICIES = ["", "sweep", "no-sweep", "bidirectional"]
 """The policies it times at gap-affine costs."""
 
 
 def policy_runner(policy: str, options) -> Path:
     """The plain runner built with `policy` forced, or with none."""
-    extra = ["-D", f"DINARA_FORCE={policy}"] if policy else []
+    extra = ["-D", f"KARAN_FORCE={policy}"] if policy else []
     return mojo_build(ROOT, HERE / "ours.mojo", BUILDS / f"runner-force-{policy or 'default'}-{harness.CPU}", extra,
                       mitigated=not options.unmitigated)
 
@@ -629,7 +632,7 @@ def regret(options) -> str:
         "",
         f"Every pair under the library's own choices and under each policy forced in turn ("
         + ", ".join(f"`{policy}`" for policy in policies if policy)
-        + f"; see `dinara_align/probes.mojo`), {options.rounds} alternating rounds, every policy's costs held to "
+        + f"; see `karan/probes.mojo`), {options.rounds} alternating rounds, every policy's costs held to "
         "the default's. A policy *wins* a pair when its slowest round beat the default's fastest. *Regret*: the "
         "time the default would save by taking, on each pair, the policy that won it, as a share of its total; "
         "*oracle*: that total over the default's. A policy stopped by its budget is left out of the pairs it "
@@ -900,7 +903,7 @@ def perf(options) -> str:
     what = {"pairs": "each sample through the runner", "batch": "each short-read workload on one thread",
             "modes": "each modes workload"}[options.target]
     lines = [
-        f"# Perf: where dinara-align's cycles go{', at ' + options.affine if options.affine else ''}",
+        f"# Perf: where karan's cycles go{', at ' + options.affine if options.affine else ''}",
         "",
         harness.build_note().strip(),
         "",
@@ -1043,15 +1046,15 @@ def peak(options) -> str:
         harness.build_note().strip(),
         "",
         "Each kernel alone on the workload that keeps it busiest, the engine forced (see"
-        " `dinara_align/probes.mojo`), the most of three runs: the rate `probes` measures each phase against.",
+        " `karan/probes.mojo`), the most of three runs: the rate `probes` measures each phase against.",
         "",
         "| kernel | workload | rate |",
         "| :-- | :-- | --: |",
     ]
     for name, policy, kind, (workload, pairs, length, rate, unrelated), work, spent, unit in PEAKS:
         binary = mojo_build(ROOT, HERE / "probed.mojo", BUILDS / f"runner-probes-{policy}-{harness.CPU}",
-                            extra=["-D", "DINARA_PROBES=1", "-D", f"DINARA_FORCE={policy}"])
-        tool = f"dinara-align:{costs}" if kind == "affine" else "dinara-align (bit-parallel, 1 thread) distance"
+                            extra=["-D", "KARAN_PROBES=1", "-D", f"KARAN_FORCE={policy}"])
+        tool = f"karan:{costs}" if kind == "affine" else "karan (bit-parallel, 1 thread) distance"
         path = synthetic(workload, pairs, length, rate, unrelated)
         best = 0.0
         for _ in range(3):
@@ -1091,7 +1094,7 @@ def stat_per_pair(command_of, pair: tuple[str, str], copies: int) -> dict:
 
 
 def rivals(options) -> str:
-    """dinara-align and the rival that beat it, side by side in hardware counts, on the pairs `duel` found it
+    """karan and the rival that beat it, side by side in hardware counts, on the pairs `duel` found it
     lost; returns the report."""
     reason = perf_ready()
     if reason:
@@ -1108,7 +1111,7 @@ def rivals(options) -> str:
         "",
         harness.build_note().strip(),
         "",
-        "Each pair `duel` found dinara-align losing beyond its noise, counted alone for dinara-align and for the"
+        "Each pair `duel` found karan losing beyond its noise, counted alone for karan and for the"
         " rival that won it (the pair run once and many times, the difference per copy, so start-up cancels)."
         " More instructions mean more work done; the same instructions at a lower IPC mean the work runs slower"
         " (misses, dependencies, mispredictions).",
@@ -1199,12 +1202,12 @@ def scaling(options) -> str:
                                     check=True).stdout
             for line in output.splitlines():
                 fields = line.split("\t")
-                if fields[0] == "dinara-align":
+                if fields[0] == "karan":
                     seconds = float(fields[2])
                     single = single or seconds
                     lines.append(f"| {workload} | {count} | {duration(seconds)} | {single / seconds:.2f}× | "
                                  f"{100 * single / (seconds * count):.0f}% |")
-                elif fields[0] == "dinara-align GPU" and count == most:
+                elif fields[0] == "karan GPU" and count == most:
                     gpu_lines.append(f"| {workload} | {duration(float(fields[2]))} |")
     if gpu_lines:
         lines += ["", "On the GPU, the whole call, packing included:", "", "| workload | time |", "| :-- | --: |",
@@ -1265,7 +1268,7 @@ def modes(options) -> str:
 
     modes_bench.generate()
     binary = mojo_build(ROOT, HERE / "probed_modes.mojo", BUILDS / f"modes-probes-{harness.CPU}",
-                        extra=["-D", "DINARA_PROBES=1"])
+                        extra=["-D", "KARAN_PROBES=1"])
     environment = dict(os.environ)
     preload = probes_report.shim()
     if preload is not None:
@@ -1361,7 +1364,7 @@ def probes(options) -> str:
     import probes_report
 
     binary = mojo_build(ROOT, HERE / "probed.mojo", BUILDS / f"runner-probes-{harness.CPU}",
-                        extra=["-D", "DINARA_PROBES=1"])
+                        extra=["-D", "KARAN_PROBES=1"])
     tool = ours_tool(options)
     found = {}
     for name, path, facts in samples(options):
@@ -1398,7 +1401,7 @@ def main() -> None:
                         help="unit costs' distance alone, no traceback, rather than an alignment")
     parser.add_argument("--bases", type=float, default=bench.SAMPLE_BASES, help="sequence per sample, as bench.py")
     parser.add_argument("--budget", type=float, default=30.0, help="seconds per run per sample (default 30)")
-    parser.add_argument("--rounds", type=int, default=3, help="rounds of dinara-align (default 3)")
+    parser.add_argument("--rounds", type=int, default=3, help="rounds of karan (default 3)")
     parser.add_argument("--fresh", action="store_true", help="duel: run the rivals again rather than reuse them")
     parser.add_argument("--kept-only", action="store_true", help="duel: only rivals with kept results; never run one")
     parser.add_argument("--worst", type=int, default=5, help="duel: the losing pairs listed per dataset (default 5)")

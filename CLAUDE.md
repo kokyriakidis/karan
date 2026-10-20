@@ -1,4 +1,4 @@
-# dinara-align
+# karan
 
 Exact DNA alignment in Mojo: affine-gap Gotoh alignment on CPU and GPU, and a bit-parallel unit-cost
 edit distance after A*PA2.
@@ -20,7 +20,7 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
 - `pixi run test-wfa` holds every mode WFA2-lib also has to its regression set (scores and CIGARs).
 - `pixi run profile duel|rivals|regret|probes|peak|perf|modes|scaling|noise|compare|all` finds where time goes,
   what each engine choice cost and where a rival wins (see `benchmarks/README.md`, Profiling); probes compile
-  in only with `-D DINARA_PROBES`, forced policies only with `-D DINARA_FORCE`.
+  in only with `-D KARAN_PROBES`, forced policies only with `-D KARAN_FORCE`.
 - Finished work merges straight into `main` and is pushed; no pull requests.
 - The paper's text lives in `tools/paper/` (`main_text.py`, `supplement.py`); `pixi run paper` rewrites `paper/`,
   an Overleaf project, from it. Edit the source, not the generated `.tex`.

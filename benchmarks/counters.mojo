@@ -12,13 +12,13 @@ its counts are left out rather than reported as zero.
 from std.ffi import external_call
 from std.sys.info import CompilationTarget
 
-from dinara_align.probes import counter_page, read_counter, UNCOUNTED
+from karan.probes import counter_page, read_counter, UNCOUNTED
 
 
 comptime EVENTS = 5
 """Hardware events counted: see `Counters.json`."""
 comptime SHIMS = 10
-"""`counting.c`'s counts, in its `dinara_counts` order: see `Counters.json`."""
+"""`counting.c`'s counts, in its `karan_counts` order: see `Counters.json`."""
 
 
 def perf_event_open(kind: Int, config: Int) -> Int:
@@ -54,7 +54,7 @@ struct Counters(Movable):
     var usage: List[Int64]
     """`getrusage`'s answer."""
     var shim: Int
-    """The address of `counting.c`'s `dinara_counts`, 0 where it is not preloaded."""
+    """The address of `counting.c`'s `karan_counts`, 0 where it is not preloaded."""
     var instruction_page: Int
     """The instruction counter's page, which an aligner's tally counts its phases on (see `Tally.use_counters`)."""
     var cycle_page: Int
@@ -79,7 +79,7 @@ struct Counters(Movable):
                 self.descriptors.append(-1)
             else:
                 self.descriptors.append(perf_event_open(kinds[event], configs[event]))
-        var name = String("dinara_counts")
+        var name = String("karan_counts")
         var handle = -2 if CompilationTarget.is_macos() else 0
         self.shim = external_call["dlsym", Int](handle, name.as_c_string_span().ptr())
         self.before = List[Int](length=EVENTS + SHIMS + 2, fill=-1)

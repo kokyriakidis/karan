@@ -1,6 +1,6 @@
 Every tool built for `native` (Rust `-C target-cpu=native`, C and C++ `-march=native`, Mojo its default, the host), run on Intel(R) Core(TM) i9-7900X CPU @ 3.30GHz.
 
-| workload | threads | dinara-align | dinara-align GPU | WFA2-lib | KSW2 | parasail | Edlib |
+| workload | threads | karan | karan GPU | WFA2-lib | KSW2 | parasail | Edlib |
 | :-- | :-- | --: | --: | --: | --: | --: | --: |
 | illumina-affine | one core | **231 ms** | — | 1063 ms | 10.9 s | 21.7 s | — |
 | illumina-edit | one core | **212 ms** | — | 450 ms | — | — | 1971 ms |

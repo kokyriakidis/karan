@@ -9,8 +9,8 @@
 #     bash scripts/bundle.sh --library <exports.mojo> [out-dir] [target-cpu]
 #
 # With `--library` the Mojo file's `@export` functions become a shared library, `lib<name>.so` or
-# `lib<name>.dylib`, beside the same runtime libraries; a program linking it needs only its folder on
-# its own search path (see `pixi run build-c`).
+# `lib<name>.dylib` (`<name>` the file's, or `$BUNDLE_NAME`), beside the same runtime libraries; a
+# program linking it needs only its folder on its own search path (see `pixi run build-c`).
 #
 # `mojo build` has no static mode and writes the environment's absolute library path into the binary ahead
 # of any `$ORIGIN` passed through `-Xlinker`, so the bundled copies would be ignored wherever that path
@@ -24,7 +24,7 @@ if [ "${1:-}" = --library ]; then
     shift
 fi
 program=${1:?usage: pixi run bundle <program.mojo> [out-dir] [target-cpu]}
-name=$(basename "$program" .mojo)
+name=${BUNDLE_NAME:-$(basename "$program" .mojo)}
 out=${2:-build/bundle/$name}
 root=$(cd "$(dirname "$0")/.." && pwd)
 env_lib=${CONDA_PREFIX:?run through pixi: pixi run bundle ...}/lib

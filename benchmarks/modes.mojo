@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The side of `modes_bench.py` dinara-align runs: each workload's mode, with its CIGAR, one pair at a time on one
+The side of `modes_bench.py` karan runs: each workload's mode, with its CIGAR, one pair at a time on one
 thread.
 
     mojo build -I . benchmarks/modes.mojo -o <binary> && <binary> <workload file>
@@ -14,7 +14,7 @@ score where the mode rewards matches, as `modes/rivals.cpp` prints them.
 from std.sys import argv
 from std.time import perf_counter_ns
 
-from dinara_align import Costs, Mode, Scoring, align
+from karan import Costs, Mode, Scoring, align
 
 
 def dna_table() raises -> Scoring:
@@ -85,4 +85,4 @@ def main() raises:
             total += found
             weighted += (index + 1) * found
         best = min(best, Float64(perf_counter_ns() - started) / 1e9)
-    print("dinara-align", workload, best / Float64(len(references)), String(total, ":", weighted), sep="\t")
+    print("karan", workload, best / Float64(len(references)), String(total, ":", weighted), sep="\t")

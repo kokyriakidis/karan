@@ -1,9 +1,9 @@
-dinara-align
+karan
 Copyright 2026 Konstantinos Kyriakidis
 
-dinara-align is licensed under the Mozilla Public License, Version 2.0 (see LICENSE).
+karan is licensed under the Mozilla Public License, Version 2.0 (see LICENSE).
 
-The unit-cost edit distance, dinara_align/bit_parallel.mojo, diagonal.mojo,
+The unit-cost edit distance, karan/bit_parallel.mojo, diagonal.mojo,
 seeds.mojo, band.mojo, traceback.mojo, edit_distance.mojo, edit_search.mojo and
 slides.mojo, is ported from pa-bitpacking in A*PA
 (https://github.com/RagnarGrootKoerkamp/astar-pairwise-aligner, commit

@@ -3,7 +3,7 @@ published versions are made from.
 
     python3 tools/paper/render.py    # rewrites paper/main.tex, paper/sections/, paper/figures/, paper/tables/
                                      # and paper/supplement.tex; writes build/paper/paper.html and supplement.html,
-                                     # and compiles build/paper/dinara-align.pdf and supplement.pdf
+                                     # and compiles build/paper/karan.pdf and supplement.pdf
 
 paper/ holds only what Overleaf compiles: main.tex (the journal's front matter, then one \\input per section),
 supplement.tex, the sections, figures and tables, references.bib, and OUP's General Template class
@@ -286,8 +286,8 @@ def render_html_main():
     body = html_body(M.BODY, M.TABLES, M.FIGURES, M.REFS)
     back = "\n".join(f'<h4>{h}</h4><p>{inline_html(t, {}, {}, M.REFS)}</p>' for h, t in M.BACK)
     refs = reference_list_html(cited_keys(M.BODY + M.ABSTRACT, M.TABLES), M.REFS)
-    title = inline_html(M.TITLE, {}, {}, M.REFS).replace("dinara-align:", '<span class="sys">dinara-align</span>:', 1)
-    return f'''<title>dinara-align paper</title>
+    title = inline_html(M.TITLE, {}, {}, M.REFS).replace("karan:", '<span class="sys">karan</span>:', 1)
+    return f'''<title>karan paper</title>
 <style>
 {style}
 </style>
@@ -325,7 +325,7 @@ window.MathJax = {{ tex: {{ inlineMath: [["\\\\(", "\\\\)"]], displayMath: [["\\
 def render_html_supplement():
     style, _ = page_assets()
     body = html_body(S.BODY, S.TABLES, {}, M.REFS, prefix="S")
-    return f'''<title>dinara-align supplement</title>
+    return f'''<title>karan supplement</title>
 <style>
 {style}
 </style>
@@ -400,7 +400,7 @@ def tex_figure(key, caption, bibkeys):
                 f"{overview_figure.tikz()}\n\\end{{tikzpicture}}}}\n"
                 f"\\caption{{{inline_tex(caption, bibkeys)}}}\\label{{fig:{key}}}\n\\end{{figure*}}\n")
     import charts_data as D
-    styles = {"dinara-align": "dinara", "A*PA2-full": "apafull", "A*PA2-simple": "apasimple", "A*PA": "apa",
+    styles = {"karan": "karan", "A*PA2-full": "apafull", "A*PA2-simple": "apasimple", "A*PA": "apa",
               "Edlib": "edlib", "BiWFA": "biwfa", "WFA": "wfa", "QuickEd": "quicked"}
     legend = ("\\begin{tikzpicture}[font=\\scriptsize]\n" + "\n".join(
         f"\\draw[{s}] ({k * 2.6:.2f},0) -- ({k * 2.6 + 0.5:.2f},0) node[right,black] {{{n}}};" for k, (n, s) in enumerate(styles.items())) + "\n\\end{tikzpicture}")
@@ -429,9 +429,9 @@ TEX_PREAMBLE = r"""\usepackage[a4paper,margin=1.8cm,columnsep=0.7cm]{geometry}
 \usepackage[round]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
-\newcommand{\dinara}{dinara-align}
+\newcommand{\karan}{karan}
 \tikzset{
-  dinara/.style={very thick, black},
+  karan/.style={very thick, black},
   apafull/.style={thick, blue!80!black},
   apasimple/.style={thick, cyan!70!black, dashed},
   apa/.style={thick, violet, dotted},
@@ -491,7 +491,7 @@ def tex_longtable(key, t, bibkeys):
 # The journal's class: OUP's General Template (oup-authoring-template, January 2026), which Bioinformatics
 # recommends for submission, with the options and author-year style its sheet gives for the journal. The class
 # loads natbib, hyperref, tikz, xcolor, url, amsmath and amssymb itself; it and the style sit beside the paper.
-TIKZ_STYLES = TEX_PREAMBLE[TEX_PREAMBLE.index("\\newcommand{\\dinara}"):]
+TIKZ_STYLES = TEX_PREAMBLE[TEX_PREAMBLE.index("\\newcommand{\\karan}"):]
 JOURNAL_CLASS = "oup-authoring-template"
 JOURNAL_STYLE = "oup-abbrvnat"
 
@@ -535,7 +535,7 @@ def render_project():
 \\access{{Published: Date added during production}}
 \\appnotes{{Original Paper}}
 \\firstpage{{1}}
-\\title[dinara-align]{{{inline_tex(M.TITLE, bk)}}}
+\\title[karan]{{{inline_tex(M.TITLE, bk)}}}
 {authors}
 \\address[1]{{\\orgname{{{tex_escape(organisation)}}}, \\orgaddress{{\\state{{{tex_escape(", ".join(place[:-1]))}}}, \\country{{{tex_escape(place[-1])}}}}}}}
 \\corresp[$\\ast$]{{Corresponding authors. {emails}}}
@@ -574,7 +574,7 @@ def render_tex_supplement():
 
 def build_pdfs():
     """Compiles paper/ as Overleaf would, in a copy under build/paper/latex so that paper/ keeps no build output,
-    and leaves build/paper/dinara-align.pdf and supplement.pdf; says so and returns if pdflatex is missing."""
+    and leaves build/paper/karan.pdf and supplement.pdf; says so and returns if pdflatex is missing."""
     import shutil
     import subprocess
 
@@ -584,7 +584,7 @@ def build_pdfs():
     work = os.path.join(HTML_OUT, "latex")
     shutil.rmtree(work, ignore_errors=True)
     shutil.copytree(PAPER, work)
-    for name, target in (("main", "dinara-align"), ("supplement", "supplement")):
+    for name, target in (("main", "karan"), ("supplement", "supplement")):
         def run(*command):
             return subprocess.run(command, cwd=work, capture_output=True, text=True)
 
@@ -624,12 +624,12 @@ if __name__ == "__main__":
     # The project as one zip, for Overleaf's New Project > Upload Project: its files at the zip's top level.
     import zipfile
 
-    archive = os.path.join(HTML_OUT, "dinara-align-overleaf.zip")
+    archive = os.path.join(HTML_OUT, "karan-overleaf.zip")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
         for folder, _, files in os.walk(PAPER):
             for name in files:
                 if name != ".gitignore":
                     path = os.path.join(folder, name)
                     out.write(path, os.path.relpath(path, PAPER))
-    print("build/paper/dinara-align-overleaf.zip: the project, for Overleaf's Upload Project")
+    print("build/paper/karan-overleaf.zip: the project, for Overleaf's Upload Project")
     build_pdfs()

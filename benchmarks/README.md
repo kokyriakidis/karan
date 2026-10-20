@@ -1,6 +1,6 @@
 # Benchmarks
 
-Times dinara-align against the exact aligners of the two latest evaluations, A\*PA2's (Groot Koerkamp,
+Times karan against the exact aligners of the two latest evaluations, A\*PA2's (Groot Koerkamp,
 Bioinformatics 2025) and QuickEd's (Doblas et al., Bioinformatics 2025), on their datasets, and fails
 any run in which two tools disagree on an answer.
 
@@ -13,7 +13,7 @@ pixi run bench --repeats 3           # every tool three times a dataset, the rou
 pixi run bench --fresh               # the rivals too, rather than their kept results
 pixi run bench-modes                 # local, overlap, infix, prefix, extension, two-piece, tables
 pixi run bench-batch                 # 500,000 short reads, on one core and on every core
-pixi run bench-ablation              # dinara-align with each technique switched off in turn
+pixi run bench-ablation              # karan with each technique switched off in turn
 pixi run profile all                 # where the time goes and where a rival wins (see Profiling)
 ```
 
@@ -22,11 +22,11 @@ with every table below and more (the totals over each whole dataset among them),
 `bench-affine-4-6-2-exact.json` with every tool's unrounded figures, from which the paper's tables are
 written, `bench-scaling.json` for its charts, `modes.md` and `batch-results.md`.
 
-The tables below are the run the paper reports, kept in `results/2026-10-15/`: dinara-align timed again at
+The tables below are the run the paper reports, kept in `results/2026-10-15/`: karan timed again at
 `7fb47d5` (`--budget 30 --repeats 3`), every rival replayed from its kept results and every answer checked
 against theirs, a pair's time its median over three rounds and a tool credited with the pairs it finished in
 every round; the modes and the batches are each the median of three runs. The rivals were last timed in one
-session with dinara-align at `87d365f` (`--budget 30 --fresh --repeats 3`, kept in `results/2026-10-11/`),
+session with karan at `87d365f` (`--budget 30 --fresh --repeats 3`, kept in `results/2026-10-11/`),
 and the paper's tables take each rival's median over those three alternating rounds
 (`tools/paper/merge_runs.py`), which the replayed rows below match within 3%.
 
@@ -34,12 +34,12 @@ and the paper's tables take each rival's median over those three alternating rou
 
 Every rival is cloned at a pinned commit into `.cache/` and built there for the host's instruction set;
 nothing of theirs is vendored. A pinned rival's results do not change, so each runs on a sample once and
-its rows are kept, keyed by its pin, its runner's source and the CPU; a rerun times dinara-align alone,
+its rows are kept, keyed by its pin, its runner's source and the CPU; a rerun times karan alone,
 in seconds to minutes, and still checks every answer against every other.
 
 | tool | commit | run on |
 | :-- | :-- | :-- |
-| dinara-align | this tree | everything, pair by pair through one `Aligner` a file, as every rival's runner keeps one aligner a file, and as a batch, every pair of a sample in one call on the same thread |
+| karan | this tree | everything, pair by pair through one `Aligner` a file, as every rival's runner keeps one aligner a file, and as a batch, every pair of a sample in one call on the same thread |
 | [A\*PA, A\*PA2-simple, A\*PA2-full](https://github.com/RagnarGrootKoerkamp/astar-pairwise-aligner) | `bf2e14e` | unit costs, with the settings A\*PA2's evaluation gave each kind of data |
 | [Edlib, BiWFA, WFA](https://github.com/pairwise-alignment/pa-bench) through pa-bench | `af7a50d` | unit costs, as A\*PA2's evaluation configured them |
 | [QuickEd](https://github.com/maxdoblas/QuickEd) | `2b1d44b` | unit costs, its bound-and-align (x86-64) |
@@ -66,7 +66,7 @@ aligner: each tool's time is the faster of two passes over a workload, its mean 
 
 All tables were measured on an Intel Core i9-7900X (Skylake-X, AVX-512), ten cores at a fixed 3.3 GHz,
 turbo boost and hyper-threading off, 91 GB, Ubuntu 26.04, on the otherwise idle machine, every tool on one
-core pinned with `taskset` unless a row says otherwise, dinara-align at `7fb47d5` (the rivals at `87d365f`'s
+core pinned with `taskset` unless a row says otherwise, karan at `7fb47d5` (the rivals at `87d365f`'s
 session) for every table but the ablation (`dc980d7`); Rust nightly
 2026-08-14, GCC 15.2, Mojo 1.1.0.
 
@@ -80,7 +80,7 @@ SARS-CoV-2 genomes. Real Illumina, PacBio HiFi and PromethION reads, the technol
 Sequel II HiFi reads of chr20:40.0-40.2 Mbp and UCSC's ultra-long PromethION reads of chr12:80.0-80.5 Mbp
 of 10 kbp or more (ont-promethion, as QuickEd's PromethION set), streamed from GIAB's GRCh38 alignments, each read mapped by minimap2 to both haplotypes of HG002's own assembly, the T2T HG002 Q100
 v1.1, and paired with the stretch it covers, so a pair differs by sequencing errors alone; reads clipped
-past a tenth are left out. The assembly's chromosome 20 is cut from `DINARA_HG002` if that names a local
+past a tenth are left out. The assembly's chromosome 20 is cut from `KARAN_HG002` if that names a local
 copy of `hg002v1.1.fasta`, else streamed from its S3 release; samtools and minimap2 come through
 `pixi exec`. QuickEd's simulated ones, from Zenodo: random sequences of 10 kbp, 100 kbp, 500 kbp and
 1 Mbp with 1, 5, 10 and 20% uniformly spread errors, 100 Mbp a file, downloaded the first time (3.2 GB);
@@ -118,7 +118,7 @@ they cover the lengths and divergences of A\*PA2's synthetic sets. Over each sam
 
 Edit distance with its alignment, a 30 s budget a tool a dataset. Mean time per alignment:
 
-| dataset | pairs | dinara-align (bit-parallel, 1 thread) | dinara-align (bit-parallel, batch, 1 thread) | a*pa2-full | a*pa2-simple | a*pa | edlib | biwfa | wfa | ksw2 | quicked | bsalign | agree |
+| dataset | pairs | karan (bit-parallel, 1 thread) | karan (bit-parallel, batch, 1 thread) | a*pa2-full | a*pa2-simple | a*pa | edlib | biwfa | wfa | ksw2 | quicked | bsalign | agree |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | :-: |
 | ont-1k | 1221 of 12477 | 15.8 µs | 16.6 µs | 81.8 µs | 48.1 µs | 614 µs | 124 µs | 44.3 µs | 31.3 µs | 538 µs | 74.2 µs | 119 µs | ✓ |
 | ont-10k | 277 of 5000 | 142 µs | 140 µs | 393 µs | 247 µs | 15.4 ms | 1.11 ms | 752 µs | 601 µs | 13 ms | 681 µs | 1.3 ms | ✓ |
@@ -146,7 +146,7 @@ Edit distance with its alignment, a 30 s budget a tool a dataset. Mean time per 
 | l1000000.n100.e10 | 4 of 100 | 178 ms | 178 ms | 368 ms | 1.65 s | 973 ms | 17.3 s (1/4) | 22.3 s (1/4) | o.o.m. | o.o.m. | 2.65 s | o.o.m. | ✓ |
 | l1000000.n100.e20 | 4 of 100 | 886 ms | 884 ms | 2.02 s | 3.51 s | t.o. (30 s) | t.o. (30 s) | t.o. (30 s) | o.o.m. | o.o.m. | 4.8 s | o.o.m. | ✓ |
 
-Each rival's time over dinara-align's on the pairs both aligned, across the datasets, as QuickEd's text
+Each rival's time over karan's on the pairs both aligned, across the datasets, as QuickEd's text
 summarizes its own:
 
 | rival | least | geometric mean | most | datasets |
@@ -163,7 +163,7 @@ summarizes its own:
 
 Growth of peak memory aligning a pair, median and largest, as A\*PA2's Table 10 measures it:
 
-| dataset | dinara-align (bit-parallel, 1 thread) | dinara-align (bit-parallel, batch, 1 thread) | a*pa2-full | a*pa2-simple | a*pa | edlib | biwfa | wfa | ksw2 | quicked | bsalign |
+| dataset | karan (bit-parallel, 1 thread) | karan (bit-parallel, batch, 1 thread) | a*pa2-full | a*pa2-simple | a*pa | edlib | biwfa | wfa | ksw2 | quicked | bsalign |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |
 | ont-1k | 0.0 / 0.1 MB | — | 0.0 / 0.3 MB | 0.0 / 0.3 MB | 0.0 / 0.4 MB | 0.0 / 0.5 MB | 0.0 / 0.3 MB | 0.0 / 0.5 MB | 0.0 / 0.4 MB | 0.0 / 0.1 MB | 0.0 / 0.2 MB |
 | ont-10k | 0.0 / 0.5 MB | — | 0.0 / 0.7 MB | 0.0 / 0.4 MB | 0.0 / 20 MB | 0.0 / 0.4 MB | 0.0 / 1.0 MB | 0.0 / 6.3 MB | 0.0 / 29 MB | 0.0 / 2.5 MB | 0.0 / 13 MB |
@@ -191,7 +191,7 @@ Growth of peak memory aligning a pair, median and largest, as A\*PA2's Table 10 
 | l1000000.n100.e10 | 9.3 / 46 MB | — | 0.6 / 67 MB | 0.6 / 99 MB | 13 / 151 MB | 7.9 / 7.9 MB | 19 / 19 MB | — | — | 0.9 / 24 MB | — |
 | l1000000.n100.e20 | 15 / 131 MB | — | 0.4 / 184 MB | 2.9 / 192 MB | — | — | — | — | — | 0.1 / 26 MB | — |
 
-- **dinara-align is the fastest on every one of the 25 datasets**, 1.4 to 7.0 times the next fastest exact
+- **karan is the fastest on every one of the 25 datasets**, 1.4 to 7.0 times the next fastest exact
   aligner: 15.8 against WFA's 31.3 µs on ont-1k, 534 against A\*PA2-simple's 941 µs on ont-50k, 4.09
   against 6.76 ms on the PromethION reads, 116 against A\*PA2-full's 284 ms on the 500 kbp reads, 230
   against 727 µs on the SARS-CoV-2 genomes, 0.435 against WFA's 1.12 µs on the Illumina reads and 9.37
@@ -220,7 +220,7 @@ Growth of peak memory aligning a pair, median and largest, as A\*PA2's Table 10 
 Gap-affine alignment at WFA's costs (4, 6, 2), a mismatch 4 and a gap of `k` letters `6 + 2k`, against the
 exact aligners that take them, a 30 s budget a tool a dataset:
 
-| dataset | pairs | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign | agree |
+| dataset | pairs | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign | agree |
 | :-- | --: | --: | --: | --: | --: | --: | --: | :-: |
 | ont-1k | 1221 of 12477 | 97.8 µs | 100 µs | 189 µs | 306 µs | 1.11 ms | 342 µs | ✓ |
 | ont-10k | 277 of 5000 | 1.42 ms | 1.44 ms | 4.86 ms | 5.86 ms | 30 ms | 7.85 ms | ✓ |
@@ -255,7 +255,7 @@ exact aligners that take them, a 30 s budget a tool a dataset:
 | ksw2 | 11.0× | 38.6× | 227.4× | 14 |
 | bsalign | 2.1× | 25.8× | 1156.1× | 10 |
 
-- **dinara-align is the fastest on every dataset any tool finished**, 1.3 to 3.7 times the next fastest: 97.8
+- **karan is the fastest on every dataset any tool finished**, 1.3 to 3.7 times the next fastest: 97.8
   against WFA's 189 µs on ont-1k, 1.42 against 4.86 ms on ont-10k, 18.6 against BiWFA's 54.9 ms on ont-50k,
   231 against BiWFA's 576 ms on the PromethION reads, where WFA ran out of memory after 7 of 22, 628 µs
   against 1.78 ms on the SARS-CoV-2 genomes, 74.3 against 225 µs on the HiFi reads, and 17.5 against
@@ -286,7 +286,7 @@ Local, overlap and infix alignment, free ends, seed extension, two-piece gaps an
 each against the aligners that offer the same mode (`bench-modes`). Every tool aligns every pair with its
 CIGAR, and every tool's costs or scores must agree on every pair, or the run fails.
 
-| workload | pairs | dinara-align | rivals |
+| workload | pairs | karan | rivals |
 | :-- | :-- | :-- | :-- |
 | infix-edit | 100 reads of 1 kbp at 10%, each placed whole in a 3 kbp window | `Costs.edit()`, `Mode.INFIX` | Edlib's HW, WFA2-lib's ends-free edit |
 | infix-edit-long | 20 reads of 10 kbp at 5% in 30 kbp windows | the same | the same |
@@ -303,7 +303,7 @@ CIGAR, and every tool's costs or scores must agree on every pair, or the run fai
 | overlap-reads | 100 pairs of 2 kbp reads overlapping by 0.5 to 1.5 kbp, both at 5% | `Costs.affine(4, 6, 2)`, `Mode.overlap(2)` | parasail's `sg` |
 | infix-reads | 100 reads of 1 kbp at 10% placed whole in 3 kbp windows | `Mode.INFIX.with_match_score(2)` | parasail's `sg_dx` |
 
-| workload | dinara-align | Edlib | WFA2-lib | KSW2 | parasail | SSW |
+| workload | karan | Edlib | WFA2-lib | KSW2 | parasail | SSW |
 | :-- | --: | --: | --: | --: | --: | --: |
 | infix-edit | **127 µs** | 268 µs | 1 ms | — | — | — |
 | infix-edit-long | **1.92 ms** | 13.3 ms | 53.9 ms | — | — | — |
@@ -320,7 +320,7 @@ CIGAR, and every tool's costs or scores must agree on every pair, or the run fai
 | overlap-reads | **703 µs** | — | — | — | 15.3 ms | — |
 | infix-reads | **685 µs** | — | — | — | 15.1 ms | — |
 
-- **dinara-align is the fastest on every workload, or tied**: twice Edlib on short infixes and 6.9 times
+- **karan is the fastest on every workload, or tied**: twice Edlib on short infixes and 6.9 times
   on long ones, 3.2 times KSW2 on extension and 8.3 times with an end bonus, 2.1 times WFA2-lib on two-piece
   gaps, 15 times parasail on a table globally, and 5.0 times SSW on the long local pairs; the infix at
   WFA2-lib's costs, 3.83 against 3.95 ms, is close to a tie.
@@ -350,12 +350,12 @@ at either end (`bench-batch`).
 
 Every tool scores the whole batch on one core, as a library runs on its caller's thread, and on all ten,
 each tool's calls spread by its own driver: the rivals' through OpenMP, one aligner a thread, and
-dinara-align's by the benchmark program, the batch cut into forty pieces, each one `distances` call, each
+karan's by the benchmark program, the batch cut into forty pieces, each one `distances` call, each
 thread taking the next piece as it finishes; the library itself starts no threads. WFA2-lib runs exact,
-its score alone. dinara-align on the GPU is `scores` on an NVIDIA GeForce RTX 2070, the whole call:
+its score alone. karan on the GPU is `scores` on an NVIDIA GeForce RTX 2070, the whole call:
 packing the batch, copying it over, scoring it and copying back.
 
-| workload | threads | dinara-align | dinara-align GPU | WFA2-lib | KSW2 | parasail | Edlib |
+| workload | threads | karan | karan GPU | WFA2-lib | KSW2 | parasail | Edlib |
 | :-- | :-- | --: | --: | --: | --: | --: | --: |
 | illumina-affine | one core | **229 ms** | — | 1060 ms | 10.9 s | 21.8 s | — |
 | illumina-edit | one core | **211 ms** | — | 448 ms | — | — | 2004 ms |
@@ -376,8 +376,8 @@ packing the batch, copying it over, scoring it and copying back.
 
 ## Ablation
 
-What each technique contributes: dinara-align built with one switched off at a time against the build
-with none, everything else alike (`bench-ablation`, switches in `dinara_align/ablation.mojo`). Every
+What each technique contributes: karan built with one switched off at a time against the build
+with none, everything else alike (`bench-ablation`, switches in `karan/ablation.mojo`). Every
 configuration aligns samples of the main benchmark's datasets with traceback, the 500 kbp reads ten times
 the default sample, and the certified-band switch scores the short-read batch. The configurations
 alternate within each of three rounds, so a drift in the machine falls on all of them, and the table gives
@@ -419,7 +419,7 @@ the memory cap.
 
 ## Profiling
 
-`pixi run profile` pinpoints where dinara-align's time goes, where it could go less far, and where a rival
+`pixi run profile` pinpoints where karan's time goes, where it could go less far, and where a rival
 beats it, on the samples `bench` times (`profile.py`):
 
 ```bash
@@ -441,8 +441,8 @@ pixi run profile all                     # every view but compare, in order
 | :-- | :-- | :-- |
 | duel | Which pairs does a rival win, by how much, beyond our noise? | our median over rounds per pair beside each rival's kept time |
 | rivals | Do we do more work than the winner, or the same work slower? | each lost pair counted alone for both: instructions, IPC, branch and cache misses |
-| regret | Which engine choices cost time, on which pairs? | every pair under each forced policy (`-D DINARA_FORCE`), costs held equal |
-| probes | Where does each pair's time go, and is the work it does what it needed? | `-D DINARA_PROBES`: engines, phases, per-phase instructions and cycles (`rdpmc`), work counters, `perf_event_open` counters, allocations and copies (`probes/counting.c`), page faults |
+| regret | Which engine choices cost time, on which pairs? | every pair under each forced policy (`-D KARAN_FORCE`), costs held equal |
+| probes | Where does each pair's time go, and is the work it does what it needed? | `-D KARAN_PROBES`: engines, phases, per-phase instructions and cycles (`rdpmc`), work counters, `perf_event_open` counters, allocations and copies (`probes/counting.c`), page faults |
 | peak | How close does each phase run to its kernel alone? | each kernel forced on its best workload; `probes` divides each phase's rate by it |
 | perf | Which functions, lines and instructions are hot, and why? | `perf stat`, top-down levels 1 and 2, `perf record` by function, file, line; `perf annotate` of the hottest functions (vector share, inlined copies); LBR callers of copy and allocation routines |
 | modes | The same for local, overlap, infix, prefix, extension, two-piece and tables | `probed_modes.mojo` over the modes workloads |
@@ -450,8 +450,8 @@ pixi run profile all                     # every view but compare, in order
 | noise | How big must a difference be to be the code's, not its layout's? | the same code with functions moved by 0, 16, 32, 48 bytes |
 | compare | Is a change faster or slower, dataset by dataset? | two builds, alternating rounds, bootstrap intervals, the layout floor |
 
-The probes compile in only with `-D DINARA_PROBES` (`dinara_align/probes.mojo`) and a forced policy only with
-`-D DINARA_FORCE`; a normal build folds every probe and every policy away. Every policy keeps the answer exact,
+The probes compile in only with `-D KARAN_PROBES` (`karan/probes.mojo`) and a forced policy only with
+`-D KARAN_FORCE`; a normal build folds every probe and every policy away. Every policy keeps the answer exact,
 and `regret` fails if any policy's cost differs from the default's. The findings `probes` flags (rounds
 wasted, a band wider than needed, seeds that took longer than the band, tiles recomputed, allocations in a
 warm aligner, copies beyond the sequences' size) are diagnostics, each a pattern worth a look.
@@ -467,11 +467,11 @@ annotate` shows them), and the GPU's kernels without Nsight Systems.
   between runs, and on this core by up to a third between builds that do not touch the code involved,
   where a loop lands against the micro-op cache (Intel's JCC erratum fix); read a difference of that size
   as a tie, and rerun on your own hardware before quoting any of this.
-- **One thread, the caller's.** dinara-align is a library: it runs on its caller's thread and starts none
+- **One thread, the caller's.** karan is a library: it runs on its caller's thread and starts none
   of its own, so every column but the short reads' ten-core rows is one core.
 - **Samples, not whole datasets.** The totals over each dataset in `bench.md` multiply a sample's mean by
   the dataset's pairs, marked ≈ where the sample is not the whole dataset; QuickEd's tables align every
   pair.
 - **Memory growth leaves the input and the runtime out**, as A\*PA2's Table 10 does; peak resident
-  memory, as QuickEd reports it, includes them, and dinara-align's runtime holds about 13 MB where the
+  memory, as QuickEd reports it, includes them, and karan's runtime holds about 13 MB where the
   others' hold 2 to 8.

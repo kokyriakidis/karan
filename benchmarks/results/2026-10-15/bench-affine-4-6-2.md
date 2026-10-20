@@ -36,7 +36,7 @@ Mean time per alignment over each dataset's sample, at most 30 s a tool a datase
 a tool aligned before it was stopped counted; t.o. a tool its budget stopped before a pair, o.o.m. one the
 8 GB memory cap stopped (A*PA2's view):
 
-| dataset | pairs | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign | agree |
+| dataset | pairs | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign | agree |
 | :-- | --: | --: | --: | --: | --: | --: | --: | :-: |
 | ont-1k | 1221 of 12477 | 97.8 µs | 100 µs | 189 µs | 306 µs | 1.11 ms | 342 µs | ✓ |
 | ont-10k | 277 of 5000 | 1.42 ms | 1.44 ms | 4.86 ms | 5.86 ms | 30 ms | 7.85 ms | ✓ |
@@ -66,7 +66,7 @@ a tool aligned before it was stopped counted; t.o. a tool its budget stopped bef
 
 Median time per alignment over the same pairs (A*PA2's supplement):
 
-| dataset | pairs | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
+| dataset | pairs | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
 | ont-1k | 1221 of 12477 | 105 µs | 100 µs | 201 µs | 279 µs | 1.04 ms | 400 µs |
 | ont-10k | 277 of 5000 | 556 µs | 1.44 ms | 1.89 ms | 2.29 ms | 10.1 ms | 3.09 ms |
@@ -97,7 +97,7 @@ Median time per alignment over the same pairs (A*PA2's supplement):
 Total over each whole dataset, its mean time per pair times its pairs, ≈ where the sample is not the
 whole (QuickEd's Table 2 and S3):
 
-| dataset | pairs | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
+| dataset | pairs | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
 | ont-1k | 12477 | ≈ 1.22 s | ≈ 1.25 s | ≈ 2.36 s | ≈ 3.81 s | ≈ 13.8 s | ≈ 4.27 s |
 | ont-10k | 5000 | ≈ 7.11 s | ≈ 7.22 s | ≈ 24.3 s | ≈ 29.3 s | ≈ 150 s | ≈ 39.3 s |
@@ -125,7 +125,7 @@ whole (QuickEd's Table 2 and S3):
 | l1000000.n100.e10 | 100 | t.o. (30 s) | t.o. (30 s) | o.o.m. | t.o. (30 s) | o.o.m. | o.o.m. |
 | l1000000.n100.e20 | 100 | t.o. (30 s) | t.o. (30 s) | o.o.m. | t.o. (30 s) | o.o.m. | o.o.m. |
 
-Each rival's time over dinara-align (1 thread)'s, on the pairs both aligned:
+Each rival's time over karan (1 thread)'s, on the pairs both aligned:
 
 | dataset | wfa | biwfa | ksw2 | bsalign |
 | :-- | --: | --: | --: | --: |
@@ -166,7 +166,7 @@ The same across datasets, as QuickEd's text summarizes its own:
 
 Growth of peak memory aligning a pair, median / largest, input and runtime left out (A*PA2's Table 10):
 
-| dataset | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
+| dataset | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
 | :-- | --: | --: | --: | --: | --: | --: |
 | ont-1k | 0.0 / 0.4 MB | — | 0.0 / 3.0 MB | 0.0 / 1.7 MB | 0.0 / 0.9 MB | 0.0 / 1.9 MB |
 | ont-10k | 0.0 / 21 MB | — | 0.0 / 97 MB | 0.0 / 2.2 MB | 0.0 / 58 MB | 0.0 / 104 MB |
@@ -197,7 +197,7 @@ Growth of peak memory aligning a pair, median / largest, input and runtime left 
 Peak resident memory of each runner, its sample included, a run stopped mid-pair at least this
 (QuickEd's Table 2 and S3):
 
-| dataset | dinara-align (1 thread) | dinara-align (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
+| dataset | karan (1 thread) | karan (batch, 1 thread) | wfa | biwfa | ksw2 | bsalign |
 | :-- | --: | --: | --: | --: | --: | --: |
 | ont-1k | 15 MB | 18 MB | 11 MB | 8 MB | 8 MB | 4 MB |
 | ont-10k | 49 MB | 51 MB | 163 MB | 10 MB | 114 MB | 184 MB |

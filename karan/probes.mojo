@@ -1,9 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-Probes for profiling, compiled in only by a build with `-D DINARA_PROBES` (see `benchmarks/profile.py`):
+Probes for profiling, compiled in only by a build with `-D KARAN_PROBES` (see `benchmarks/profile.py`):
 per pair, the engine that settled it, the time each phase took and the work each did. A normal build
-defines no `DINARA_PROBES`, every probe is then a constant branch the compiler folds away, and a
+defines no `KARAN_PROBES`, every probe is then a constant branch the compiler folds away, and a
 `Tally` holds an empty list it never touches.
 
 A `Tally` lives in each `Aligner`'s space (see `EditSpace`), so it is per thread like the rest of the
@@ -12,7 +12,7 @@ names them. Each phase also counts the instructions and cycles it retired, read 
 the tally opens through `perf_event_open` on Linux x86 the first time it is started, so a phase costs a
 few dozen cycles more, not a system call.
 
-A build may also force a policy on the engines' choices, `-D DINARA_FORCE=<policy>` (see `FORCE`), so that
+A build may also force a policy on the engines' choices, `-D KARAN_FORCE=<policy>` (see `FORCE`), so that
 `profile.py regret` can time each pair under every choice the library could have made for it.
 """
 
@@ -22,10 +22,10 @@ from std.sys.info import CompilationTarget
 from std.time import perf_counter_ns
 
 
-comptime PROBES = is_defined["DINARA_PROBES"]()
+comptime PROBES = is_defined["KARAN_PROBES"]()
 """Whether this build records probes."""
 
-comptime FORCE = get_defined_string["DINARA_FORCE", ""]()
+comptime FORCE = get_defined_string["KARAN_FORCE", ""]()
 """A policy forced on the engines' choices, every one of which keeps the answer exact, or none:
 
 - `band`: no diagonal transition settles a pair; band doubling takes it from the one front's projection.

@@ -1,22 +1,22 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The command line of dinara-align: pairs of sequences in, their exact alignments out, as a table, SAM or
+The command line of karan: pairs of sequences in, their exact alignments out, as a table, SAM or
 PAF.
 
     pixi run build-cli                                   # build/cli: the program and its runtime libraries
-    build/cli/dinara-align reference.fa reads.fq      # every read against the one reference
-    build/cli/dinara-align -r ACGTACGT -q ACGTTCGT    # one pair given whole
-    build/cli/dinara-align --pairs pairs.tsv          # name, reference, query a line
+    build/cli/karan reference.fa reads.fq      # every read against the one reference
+    build/cli/karan -r ACGTACGT -q ACGTTCGT    # one pair given whole
+    build/cli/karan --pairs pairs.tsv          # name, reference, query a line
 
 Run with `--help` for every option (see `USAGE`).
 """
 
 from std.sys import argv, exit, stderr
 
-from dinara_align.common import hardware_threads
+from karan.common import hardware_threads
 
-from dinara_align import (
+from karan import (
     Alignment,
     Anchor,
     Band,
@@ -28,9 +28,9 @@ from dinara_align import (
     distances,
 )
 
-comptime USAGE = """usage: dinara-align [options] REFERENCE QUERY
-       dinara-align [options] -r SEQUENCE -q SEQUENCE
-       dinara-align [options] --pairs PAIRS.tsv
+comptime USAGE = """usage: karan [options] REFERENCE QUERY
+       karan [options] -r SEQUENCE -q SEQUENCE
+       karan [options] --pairs PAIRS.tsv
 
 Aligns each query to its reference exactly and prints one line per pair.
 
@@ -84,7 +84,7 @@ struct Record(Copyable, Movable):
 
 def fail(message: String):
     """Prints `message` to standard error and exits with status 2, as for a bad command line."""
-    print("dinara-align:", message, file=stderr)
+    print("karan:", message, file=stderr)
     exit(2)
 
 
@@ -237,7 +237,7 @@ def main():
         run()
     except error:
         # The library's refusals and a bad file both come back as a line, not a stack trace.
-        fail(String(String(error).removeprefix("dinara-align: ")))
+        fail(String(String(error).removeprefix("karan: ")))
 
 
 def run() raises:
@@ -478,7 +478,7 @@ def run() raises:
                         " of different lengths, which SAM cannot tell apart",
                     )
                 )
-        print("@PG\tID:dinara-align\tPN:dinara-align")
+        print("@PG\tID:karan\tPN:karan")
     elif format == "tsv":
         print("query\treference\tstrand\tcost\tscore\treference_start\treference_end\tquery_start\tquery_end\tcigar")
     for pair in range(len(references)):

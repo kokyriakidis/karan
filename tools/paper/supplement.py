@@ -1,7 +1,7 @@
 """The supplementary material, in the same markup as main_text.py."""
 from change_record import SUPPLEMENT as _OLD
 
-TITLE = "Supplementary material for “dinara-align: fast, hardware-aware exact pairwise alignment that adapts its algorithm to each pair”"
+TITLE = "Supplementary material for “karan: fast, hardware-aware exact pairwise alignment that adapts its algorithm to each pair”"
 
 # Table S1's rows are kept with the change record they came from; only labels that read informally are reworded.
 _changes = next(b for b in _OLD if b[0] == "table")
@@ -51,7 +51,7 @@ BODY = [
  'S1, S4 and S5 and in Table S1 were taken when each change was introduced, on the machine indicated, against '
  'the preceding version; Table S2 was measured at commit `dc980d7`. The results of Section 4 of the main text '
  'and of Section S3 were obtained on the Skylake-X, the other tools in three alternating rounds at commit '
- '`87d365f` and dinara-align in three rounds at commit `7fb47d5` four days after, on the same builds and samples. The machines are an Intel Core i9-7900X (Skylake-X, AVX-512) and an Apple M2 (NEON), and in Section '
+ '`87d365f` and karan in three rounds at commit `7fb47d5` four days after, on the same builds and samples. The machines are an Intel Core i9-7900X (Skylake-X, AVX-512) and an Apple M2 (NEON), and in Section '
  'S1.5 an NVIDIA GeForce RTX 2070. Memory is given in MiB; references are listed in the main text.'),
 ('sec', 'Implementation details'),
 ('sub', 'Unit costs'),
@@ -232,7 +232,7 @@ BODY = [
  "diagonal transition (main text, Section 3.10), the projection is now trusted only once the wavefront's work "
  "has reached one twenty-fourth of the sweep's."),
 ('p',
- '**Compact traceback.** For the traceback of the wavefront, dinara-align stores, for every cost and diagonal, '
+ '**Compact traceback.** For the traceback of the wavefront, karan stores, for every cost and diagonal, '
  'the furthest-reaching column in four bytes and one byte of flags recording the predecessor of every layer: '
  'five bytes per diagonal, compared with twelve in the high-memory mode of WFA. When the stored wavefronts would '
  'exceed the memory limit (80 MiB by default), the pair is split at a cell through which an optimal path passes. '
@@ -396,7 +396,7 @@ BODY = [
 ('table', 'changes'),
 ('sub', 'Effect of each technique'),
 ('p',
- 'To measure what each technique contributes to the final code, dinara-align was built with one technique '
+ 'To measure what each technique contributes to the final code, karan was built with one technique '
  'switched off at a time, and every build aligned samples of the A*PA2 real datasets and of the 100 kbp '
  'simulated pairs and scored the short-read batch, the builds alternating within three rounds on one pinned core '
  'and assembled with branches kept clear of 32-byte boundaries, which the Skylake-X penalises (Table S2); every '
@@ -568,7 +568,7 @@ TABLES = {
 "modes": {
   "label": "S3",
   "caption": "Other modes: mean time per pair in ms on one pinned thread, the median of three runs, each the faster of two passes. Every tool's costs or scores agree on every pair.",
-  "header": ["Workload", "dinara-align", "Next fastest"],
+  "header": ["Workload", "karan", "Next fastest"],
   "align": "lrl",
   "wrap": [0],
   "rows": [
@@ -590,8 +590,8 @@ TABLES = {
 "affine_full": {
   "label": "S4",
   "fit": True,
-  "caption": "Gap-affine alignment at costs (4, 6, 2), all datasets: mean time per alignment in ms, with a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and dinara-align's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were; t.o. marks a tool that completed none within 30 s and o.o.m. one the 8 GiB limit stopped. Bold marks the lowest mean of the tools that completed the most pairs.",
-  "header": ["Dataset", "dinara-align", "WFA", "BiWFA", "BSAlign", "KSW2"],
+  "caption": "Gap-affine alignment at costs (4, 6, 2), all datasets: mean time per alignment in ms, with a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and karan's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were; t.o. marks a tool that completed none within 30 s and o.o.m. one the 8 GiB limit stopped. Bold marks the lowest mean of the tools that completed the most pairs.",
+  "header": ["Dataset", "karan", "WFA", "BiWFA", "BSAlign", "KSW2"],
   "align": "lrrrrr",
   "rows": [
     ["*Real data*", "", "", "", "", ""],
@@ -625,8 +625,8 @@ TABLES = {
 "unit_full": {
   "label": "S5",
   "fit": True,
-  "caption": "Unit costs, all datasets: mean time per alignment in ms, with the median in parentheses, traceback included, a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and dinara-align's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were, the median over those; t.o. marks a tool that completed none within 30 s and o.o.m. one the 8 GiB limit stopped. Bold marks the lowest mean of the tools that completed the most pairs.",
-  "header": ["Dataset", "dinara-align", "A*PA2-full", "A*PA2-simple", "A*PA", "Edlib", "BiWFA", "WFA", "QuickEd"],
+  "caption": "Unit costs, all datasets: mean time per alignment in ms, with the median in parentheses, traceback included, a 30 s budget per sample, the median of three rounds, the other tools' alternating between them and karan's four days later at its final version, on the same machine, builds and samples. Brackets give the pairs completed where not all were, the median over those; t.o. marks a tool that completed none within 30 s and o.o.m. one the 8 GiB limit stopped. Bold marks the lowest mean of the tools that completed the most pairs.",
+  "header": ["Dataset", "karan", "A*PA2-full", "A*PA2-simple", "A*PA", "Edlib", "BiWFA", "WFA", "QuickEd"],
   "align": "lrrrrrrrr",
   "rows": [
     ["*Real data*", "", "", "", "", "", "", "", ""],
@@ -694,7 +694,7 @@ TABLES = {
 "memory": {
   "label": "S7",
   "caption": "Memory at unit costs: the largest growth of peak resident memory aligning one pair of the sample, in MiB, as in A*PA2, and the peak resident memory of the whole run in parentheses, as in QuickEd, runtime and input included. Brackets give the pairs completed where not all were, with no whole-run peak; t.o. marks a tool that completed no pair within 30 s.",
-  "header": ["Dataset", "dinara-align", "A*PA2-full", "A*PA2-simple", "Edlib", "BiWFA", "QuickEd"],
+  "header": ["Dataset", "karan", "A*PA2-full", "A*PA2-simple", "Edlib", "BiWFA", "QuickEd"],
   "align": "lrrrrrr",
   "rows": [
     ["*Real data*", "", "", "", "", "", ""],
@@ -708,7 +708,7 @@ TABLES = {
 "batch": {
   "label": "S8",
   "caption": "Global scores of 500,000 short-read pairs: each time is the whole call, in ms, the median of three runs.",
-  "header": ["Costs", "Threads", "dinara-align", "WFA2-lib", "KSW2", "parasail", "Edlib"],
+  "header": ["Costs", "Threads", "karan", "WFA2-lib", "KSW2", "parasail", "Edlib"],
   "align": "llrrrrr",
   "rows": [
     ["Affine (1, 2, 1)", "1", "**229**", "1,060", "10,900", "21,800", "–"],

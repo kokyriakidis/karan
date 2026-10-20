@@ -6,7 +6,7 @@
 // and of the Mojo runtime's own allocator, `KGEN_CompilerRT_AlignedAlloc` and its free, which Mojo's lists
 // and strings take and which reaches no malloc, with the bytes asked for, and every call of memcpy, memmove and memset that reaches the C library, with
 // the bytes moved. Copies the compiler inlined, short ones of a known size, never reach it and are not
-// counted. The runner built with probes finds `dinara_counts` by `dlsym` and reads it before and after
+// counted. The runner built with probes finds `karan_counts` by `dlsym` and reads it before and after
 // each pair; a process without this library finds nothing and reports no counts.
 //
 //     cc -O2 -shared -fPIC benchmarks/probes/counting.c -o counting.so -ldl
@@ -21,9 +21,9 @@ enum {
 };
 
 // Indexed by the enum above; relaxed atomics, since a batch may allocate on several threads.
-uint64_t dinara_counts[COUNTS];
+uint64_t karan_counts[COUNTS];
 
-#define COUNT(slot, amount) __atomic_fetch_add(&dinara_counts[slot], (uint64_t)(amount), __ATOMIC_RELAXED)
+#define COUNT(slot, amount) __atomic_fetch_add(&karan_counts[slot], (uint64_t)(amount), __ATOMIC_RELAXED)
 
 static void *(*real_malloc)(size_t);
 static void *(*real_calloc)(size_t, size_t);

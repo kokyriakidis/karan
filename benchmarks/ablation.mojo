@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-The side of `ablation.py` dinara-align runs: every pair of each sample file aligned with its traceback,
+The side of `ablation.py` karan runs: every pair of each sample file aligned with its traceback,
 the mean time per alignment over the faster of two passes, and the costs' sum, which every build of the
 ablation must agree on.
 
@@ -13,7 +13,7 @@ A sample file holds a pair as a `>` line and a `<` line, as pa-bench writes them
 from std.sys import argv
 from std.time import perf_counter_ns
 
-from dinara_align import align
+from karan import align
 
 
 def read_pairs(path: String, mut firsts: List[String], mut seconds: List[String]) raises:
