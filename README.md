@@ -1,150 +1,120 @@
+<div align="center">
+
 # dinara-align
 
-**Exact pairwise sequence alignment, written in Mojo, for the CPU and the GPU.**
-
-dinara-align finds the optimal alignment of two sequences: the least edit distance, the least
-gap-affine cost or the best score. It aligns globally, with free ends, as a seed extension or locally,
-and returns the alignment as a CIGAR. Every answer is exact: no heuristic decides the result, and
-equally good alignments are broken by one fixed rule. The library is available from Mojo, C, C++
-and Python, and as a command-line aligner.
+**Exact pairwise sequence alignment in Mojo, for the CPU and the GPU.**
 
 [![CI](https://github.com/kokyriakidis/dinara-align/actions/workflows/ci.yml/badge.svg)](https://github.com/kokyriakidis/dinara-align/actions/workflows/ci.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL%202.0-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20x86--64%20%7C%20Linux%20AArch64%20%7C%20macOS%20Apple%20silicon-lightgrey)
+![Languages](https://img.shields.io/badge/API-Mojo%20%7C%20Python%20%7C%20C%20%7C%20C%2B%2B%20%7C%20CLI-orange)
+
+[Installation](#installation) · [Quick start](#quick-start) · [Performance](#performance) ·
+[Modes and costs](#alignment-modes) · [Documentation](#documentation) · [Benchmarks](benchmarks/README.md)
+
+</div>
+
+dinara-align finds the optimal alignment of two sequences: the least edit distance, the least gap-affine
+cost or the best score. It aligns globally, with free ends, as a seed extension or locally, and returns
+the CIGAR. **No heuristic decides the result**, and one fixed rule chooses among equally good alignments.
+It runs from Mojo, Python, C, C++ and the command line.
+
+```python
+>>> import dinara_align as da
+>>> da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA").cigar
+'4=1D2=1I6='
+```
 
 ## Highlights
 
-- **Fast.** In our benchmarks it is the fastest exact aligner on every workload measured, against
-  A\*PA2, A\*PA, QuickEd, BSAlign, Edlib, WFA2-lib (WFA and BiWFA), KSW2, parasail and SSW, on the
-  datasets of A\*PA2's and QuickEd's evaluations ([results](benchmarks/README.md)).
-- **Exact.** Bands, cost caps and memory limits restrict *which* alignments count, never whether the
-  best of them is found. The test suite and a fuzzer hold the results to a full dynamic-programming
-  matrix, and to WFA2-lib's own regression set, scores and CIGARs alike.
-- **Deterministic.** Of equally good alignments, one rule picks the CIGAR: indels placed left, as
-  minimap2 places them, or right, WFA2-lib's backtrace byte for byte. The CIGAR does not depend on the
-  band, the cap or which algorithm found the cost.
-- **Every common cost model and mode.** Unit costs, linear, gap-affine and two-piece gap-affine costs,
-  deletions priced apart from insertions, and substitution tables; global, infix, prefix, suffix,
-  overlap, any free ends, extension with Z-drop and end bonus, and local alignment.
-- **Batches and GPUs.** Batches of short pairs are aligned many at a time in SIMD lanes. Global and
-  local scores and alignments under a substitution table, and global unit-cost distances, also run on
-  NVIDIA GPUs and Apple silicon.
-- **Bounded memory.** Every alignment keeps its traceback within a memory limit (`max_memory`, 80 MB
-  by default): the wavefront splits a large problem where an optimal path crosses, as BiWFA does, and
-  the unit-cost band keeps some of its edges and sweeps the stretches between them again, the same
-  CIGAR either way.
-
-## How it works
-
-| problem | method |
+|  |  |
 | :-- | :-- |
-| unit costs (edit distance) | A\*PA2's bit-parallel band doubling, pruned by its gap-chaining seed heuristic on long pairs, after a diagonal transition that settles near-identical pairs |
-| gap-affine and two-piece costs | a gap-affine wavefront from both ends at once, after WFA and BiWFA; a pair far apart handed to a full sweep in 8-bit difference recurrences, after Suzuki and Kasahara |
-| local alignment, overlaps, rewarded free ends | an anti-diagonal sweep in 16-bit SIMD lanes while the scores fit, then an extension back from the best end |
-| batches of short pairs | inter-sequence SIMD: one pair a lane, over a band of diagonals each pair's own cost proves |
-| GPU scores | a band of sixteen diagonals a thread, the rest scored whole, several pairs a warp |
-
-## Performance
-
-Mean time per alignment on one core of an Intel Core i9-7900X at a fixed 3.3 GHz, every tool built
-for the machine's instruction set and every tool's answers checked against every other's. A selection
-of the rows in [benchmarks/README.md](benchmarks/README.md), which has the full tables, the datasets
-and how to reproduce them; each time is the median of three alternating rounds.
-
-| workload | dinara-align | next fastest exact aligner |
-| :-- | --: | :-- |
-| ONT reads, mean 0.8 kbp (ont-1k), edit distance | **20.8 µs** | WFA2-lib, 31.3 µs |
-| ONT reads, mean 3.6 kbp (ont-10k), edit distance | **154 µs** | A\*PA2-simple, 247 µs |
-| ONT reads, mean 9.6 kbp (ont-50k), edit distance | **582 µs** | A\*PA2-simple, 941 µs |
-| ultra-long PromethION reads of HG002, mean 45 kbp, edit distance | **3.99 ms** | A\*PA2-simple, 6.76 ms |
-| ONT reads, mean 640 kbp (ont-500k), edit distance | **118 ms** | A\*PA2-full, 284 ms |
-| SARS-CoV-2 genomes, 30 kbp, edit distance | **277 µs** | A\*PA2-simple, 727 µs |
-| Illumina 2x250 reads of HG002 against its own assembly, edit distance | **0.593 µs** | WFA2-lib, 1.12 µs |
-| PacBio HiFi reads of HG002, mean 14 kbp, edit distance | **12.9 µs** | WFA2-lib, 66.0 µs |
-| simulated 100 kbp pairs at 10% uniform errors (QuickEd), edit distance | **7.24 ms** | A\*PA2-full, 13.9 ms; QuickEd, 39.0 ms |
-| simulated 1 Mbp pairs at 20% uniform errors (QuickEd), edit distance | **890 ms** | A\*PA2-full, 2.02 s; QuickEd, 4.8 s |
-| ONT reads, mean 3.6 kbp (ont-10k), gap-affine (4, 6, 2) | **1.59 ms** | WFA2-lib, 4.86 ms |
-| Illumina 2x250 reads of HG002, gap-affine (4, 6, 2) | 1.51 µs | WFA2-lib, 1.54 µs: a tie |
-| PacBio HiFi reads of HG002, gap-affine (4, 6, 2) | **92.9 µs** | WFA2-lib, 225 µs |
-| local alignment, 1 kbp read in a 10 kbp window | **1.36 ms** | SSW, 3.15 ms |
-| overlap of two 2 kbp reads | **703 µs** | parasail, 15.3 ms |
-| extension with an end bonus | **166 µs** | KSW2, 1.24 ms |
-| 500,000 short reads, gap-affine scores, one core | **231 ms** | WFA2-lib, 1.06 s |
+| ⚡ **Fast** | The fastest exact aligner on every dataset any tool finished in our benchmarks, against A\*PA2, A\*PA, QuickEd, BSAlign, Edlib, WFA2-lib (WFA and BiWFA), KSW2, parasail and SSW: **1.4–7.0×** the next fastest at unit costs and **1.3–3.7×** at gap-affine costs ([details](#performance)). |
+| 🎯 **Exact** | Bands, cost caps and memory limits decide *which* alignments are allowed, never whether the best of them is found. A test suite and a fuzzer check every result against a full dynamic-programming matrix, and WFA2-lib's regression set checks scores and CIGARs. |
+| 🔁 **Deterministic** | One rule chooses among equally good alignments: indels placed left, as minimap2 places them, or right, matching WFA2-lib's backtrace byte for byte. The CIGAR does not depend on the band, the cap or which algorithm found the cost. |
+| 🧩 **Complete** | Unit, linear, gap-affine and two-piece costs, with deletions priced apart from insertions and substitution tables. Global, infix, prefix, suffix, overlap, any free ends, extension with Z-drop and end bonus, and local alignment. |
+| 🧮 **Batches and GPUs** | Batches of short pairs are aligned many at a time in SIMD lanes. Global and local scores and alignments under a substitution table, and global unit-cost distances, also run on NVIDIA GPUs and Apple silicon. |
+| 🧠 **Bounded memory** | A traceback stays within `max_memory` (80 MB by default) at any length, and the CIGAR is the same as with unlimited memory. |
 
 ## Installation
 
 ### Prebuilt releases
 
-Each [release](https://github.com/kokyriakidis/dinara-align/releases) provides, for Linux x86-64,
-Linux AArch64 and macOS on Apple silicon, three archives that run without Mojo or pixi:
+Each [release](https://github.com/kokyriakidis/dinara-align/releases) has three archives per platform
+(Linux x86-64, Linux AArch64, macOS on Apple silicon). Each archive includes the Mojo runtime it needs, so
+neither Mojo nor pixi has to be installed:
 
 | archive | contents |
 | :-- | :-- |
 | `dinara-align-<version>-<platform>-cli.tar.gz` | the command-line aligner, `cli/dinara-align` |
 | `dinara-align-<version>-<platform>-python.tar.gz` | the Python package, `python/dinara_align` |
-| `dinara-align-<version>-<platform>-c.tar.gz` | the C library and its header, `c/libdinara` and `c/dinara.h` |
-
-Each archive carries the Mojo runtime libraries it needs beside it. On Linux they need glibc 2.35 or
-later (Ubuntu 22.04, Debian 12, RHEL 10). The builds target each platform's baseline CPU.
+| `dinara-align-<version>-<platform>-c.tar.gz` | the C/C++ library and header, `c/libdinara` and `c/dinara.h` |
 
 ```bash
 tar -xzf dinara-align-v0.1.0-linux-64-cli.tar.gz && ./cli/dinara-align --help
 tar -xzf dinara-align-v0.1.0-linux-64-python.tar.gz && PYTHONPATH=$PWD/python python3 -c "import dinara_align"
 ```
 
+On Linux the archives need glibc 2.35 or later (Ubuntu 22.04, Debian 12, RHEL 10). They are built for
+each platform's baseline CPU.
+
 ### From source
 
-Building needs [pixi](https://pixi.sh), which installs Mojo and everything else into the project.
+Building from source needs [pixi](https://pixi.sh), which installs Mojo and every other dependency into
+the project.
 
 ```bash
-git clone https://github.com/kokyriakidis/dinara-align
-cd dinara-align
-pixi run test            # build and run the test suite
+git clone https://github.com/kokyriakidis/dinara-align && cd dinara-align
 pixi run build-cli       # build/cli/dinara-align
 pixi run build-python    # build/python/dinara_align
 pixi run build-wheel     # build/dist/*.whl, for pip install
 pixi run build-c         # build/c: libdinara and dinara.h
 ```
 
-Each build script takes an optional target CPU (for example `pixi run build-cli x86-64-v3`) for a
-build tuned to newer machines, which then runs only on CPUs with that instruction set.
+Each build script takes an optional target CPU, for example `pixi run build-cli x86-64-v3`. The result
+is faster on newer machines but runs only on CPUs with that instruction set.
 
 ## Quick start
 
 ### Command line
 
-```bash
+```console
 $ dinara-align -r ACGTACGTTTGCA -q ACGTCGTTTTGCA
 query	reference	strand	cost	score	reference_start	reference_end	query_start	query_end	cigar
 query	reference	+	2	-2	0	13	0	13	4=1D2=1I6=
 
-# Reads placed in a reference at gap-affine costs, as SAM
-$ dinara-align --costs affine:4,6,2 --mode infix --format sam reference.fa reads.fq
+$ dinara-align --costs affine:4,6,2 --mode infix --format sam reference.fa reads.fq   # reads placed in a reference
 ```
 
-Inputs are FASTA or FASTQ files, a tab-separated file of pairs (`--pairs`), or two sequences given
-whole (`-r`, `-q`). Output is a table, SAM or PAF; `dinara-align --help` lists every option.
+Inputs can be FASTA or FASTQ files, a tab-separated file of pairs (`--pairs`), or two sequences given
+on the command line (`-r`, `-q`). Output is a table, SAM or PAF, and `--threads` spreads the pairs over
+cores. `dinara-align --help` lists every option.
 
 ### Python
 
 ```python
 import dinara_align as da
 
-da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")                          # 2
+da.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA")                            # 2
 
-costs = da.Costs.affine(4, 6, 2)                                        # mismatch 4, gap 6 + 2k
+costs = da.Costs.affine(4, 6, 2)                                          # mismatch 4, gap of k: 6 + 2k
 found = da.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", costs)
-found.cost, found.cigar                                                  # (12, '4=3X6=')
+found.cost, found.cigar                                                    # (12, '4=3X6=')
 
 placed = da.align("TTTTACGTACGTTTTT", "ACGTACGT", costs, da.Mode.INFIX)
-placed.cigar, placed.reference_start, placed.reference_end               # ('8=', 4, 12)
+placed.cigar, placed.reference_start, placed.reference_end                 # ('8=', 4, 12)
 
-da.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", costs, da.Mode.local(2)).score   # 16
+da.align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", costs, da.Mode.local(2)).score     # 16
 
-da.distances(["ACGTACGT", "TTGCA"], ["ACGACGT", "TTGGCA"], threads=4)  # [1, 1]
+da.distances(["ACGTACGT", "TTGCA"], ["ACGACGT", "TTGGCA"], threads=4)    # [1, 1]
+
+aligner = da.Aligner()               # keeps its memory between calls: use one per thread in a loop
+for reference, query in [("ACGTACGTTTGCA", "ACGTCGTTTTGCA"), ("ACGTAC", "ACGAC")]:
+    print(aligner.align(reference, query).cigar)                           # 4=1D2=1I6=, then 3=1D2=
 ```
 
-### C and C++
+<details>
+<summary><b>C</b></summary>
 
 ```c
 #include "dinara.h"
@@ -159,20 +129,33 @@ if (dinara_align("ACGTACGTTTGCA", 13, "ACGTCGTTTTGCA", 13, &affine, NULL, NULL, 
 }
 ```
 
+Every function returns a negative `DINARA_` code on failure, and [c/dinara.h](c/dinara.h) documents
+each one. Link with `-L build/c -ldinara` and put `build/c` on the program's library search path.
+
+</details>
+
+<details>
+<summary><b>C++</b></summary>
+
 ```cpp
 #include "dinara.h"
 
 auto found = dinara::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", dinara::Costs::affine(4, 6, 2));
 // found.cost == 12, found.cigar == "4=3X6="
+
+dinara::Aligner aligner;  // one per thread, reused across calls
+auto edits = aligner.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA");  // 2
 ```
 
-Link with `-L build/c -ldinara` and put `build/c` on the program's library search path. Every
-function returns a negative `DINARA_` code on failure; the header documents each one.
+The C++ API is defined inline in the same header over the C library, so it builds and links the same way.
 
-### Mojo
+</details>
+
+<details>
+<summary><b>Mojo</b></summary>
 
 ```mojo
-from dinara_align import Costs, Mode, align, distance
+from dinara_align import Aligner, Costs, Mode, align, distance
 
 def main() raises:
     print(distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA"))  # 2
@@ -180,15 +163,68 @@ def main() raises:
     print(found.cost, found.cigar)  # 12 4=3X6=
     var core = align("GGGGACGTACGTGGGG", "CCCCACGTACGTCCCC", Costs.affine(4, 6, 2), Mode.local(2))
     print(core.score)  # 16
+    var aligner = Aligner()
+    for pair in [("ACGTACGTTTGCA", "ACGTCGTTTTGCA"), ("ACGTAC", "ACGAC")]:
+        print(aligner.align(pair[0], pair[1]).cigar)  # 4=1D2=1I6=, then 3=1D2=
 ```
 
-Build a program against the source tree with `mojo build -I path/to/dinara-align program.mojo`, or
-inside this repository with `pixi run mojo build -I . program.mojo`.
+Build against the source tree with `mojo build -I path/to/dinara-align program.mojo`, or from inside
+this repository with `pixi run mojo build -I . program.mojo`.
+
+</details>
+
+The library starts no threads of its own; every call runs on the caller's thread. For a loop of single
+pairs, give each thread its own `Aligner`. The batch calls (`distances`, `alignments`, `scores`) pack many
+pairs at once.
+
+## Performance
+
+Mean time per alignment on one core of an Intel Core i9-7900X (AVX-512) at a fixed 3.3 GHz. Every tool
+was built for the machine's instruction set, and every tool's answers were checked against every
+other's. Each time is the median of three rounds. This is a selection; the full tables, datasets and
+the commands to reproduce them are in [benchmarks/README.md](benchmarks/README.md).
+
+**Edit distance (unit costs)**
+
+| dataset | dinara-align | next fastest exact aligner | speed-up |
+| :-- | --: | :-- | --: |
+| ONT reads, mean 0.8 kbp (ont-1k) | **15.8 µs** | WFA2-lib, 31.3 µs | 2.0× |
+| ONT reads, mean 3.6 kbp (ont-10k) | **142 µs** | A\*PA2-simple, 247 µs | 1.7× |
+| ONT ultra-long PromethION reads of HG002, mean 45 kbp | **4.09 ms** | A\*PA2-simple, 6.76 ms | 1.7× |
+| ONT reads, mean 640 kbp (ont-500k) | **116 ms** | A\*PA2-full, 284 ms | 2.4× |
+| SARS-CoV-2 genomes, 30 kbp | **230 µs** | A\*PA2-simple, 727 µs | 3.2× |
+| Illumina 2×250 reads of HG002 against its assembly | **0.435 µs** | WFA2-lib, 1.12 µs | 2.6× |
+| PacBio HiFi reads of HG002, mean 14 kbp | **9.37 µs** | WFA2-lib, 66.0 µs | 7.0× |
+| simulated 100 kbp pairs at 10% errors (QuickEd's set) | **7.04 ms** | A\*PA2-full, 13.9 ms | 2.0× |
+| simulated 1 Mbp pairs at 20% errors (QuickEd's set) | **886 ms** | A\*PA2-full, 2.02 s | 2.3× |
+
+**Gap-affine costs (mismatch 4, gap 6 + 2k)**
+
+| dataset | dinara-align | next fastest exact aligner | speed-up |
+| :-- | --: | :-- | --: |
+| ONT reads, mean 3.6 kbp (ont-10k) | **1.42 ms** | WFA2-lib, 4.86 ms | 3.4× |
+| ONT ultra-long PromethION reads of HG002 | **231 ms** | BiWFA, 576 ms | 2.5× |
+| Illumina 2×250 reads of HG002 | **1.17 µs** | WFA2-lib, 1.54 µs | 1.3× |
+| PacBio HiFi reads of HG002 | **74.3 µs** | WFA2-lib, 225 µs | 3.0× |
+| simulated 100 kbp pairs at 10% errors | **1.02 s** | BiWFA, 2.43 s | 2.4× |
+
+**Other modes and batches**
+
+| workload | dinara-align | next fastest | speed-up |
+| :-- | --: | :-- | --: |
+| local alignment, a 1 kbp read in a 10 kbp window | **1.32 ms** | SSW, 3.17 ms | 2.4× |
+| overlap of two 2 kbp reads | **703 µs** | parasail, 15.3 ms | 22× |
+| seed extension with an end bonus | **149 µs** | KSW2, 1.24 ms | 8.3× |
+| two-piece gap-affine costs | **7.54 ms** | WFA2-lib, 15.8 ms | 2.1× |
+| 500,000 Illumina-like reads, gap-affine scores, one core (whole batch) | **229 ms** | WFA2-lib, 1.06 s | 4.6× |
+
+At gap-affine costs, dinara-align also finishes more of the hardest long pairs within the 30 s limit
+than any other tool: 9 of 10 of the 100 kbp pairs at 20%, against BiWFA's 4.
 
 ## Alignment modes
 
-A mode says which ends of the two sequences an alignment must reach. There are three kinds, free
-ends, extension and local, and the named free-end modes are presets of `ends_free`.
+A mode sets which ends of the two sequences an alignment must reach. The named free-end modes are
+presets of `ends_free`.
 
 | mode | reference | query | also known as |
 | :-- | :-- | :-- | :-- |
@@ -196,12 +232,13 @@ ends, extension and local, and the named free-end modes are presets of `ends_fre
 | `INFIX` | any part | whole | semi-global, glocal, Edlib's HW |
 | `PREFIX`, `SUFFIX` | a prefix, a suffix | whole | Edlib's SHW |
 | `overlap(m)` | a prefix or suffix | a suffix or prefix | parasail's `sg` |
-| `ends_free(...)` | as many letters free at each end as asked | likewise | WFA2-lib's ends-free |
+| `ends_free(...)` | any number of free letters at each end | the same | WFA2-lib's ends-free |
 | `extension(m, anchor)` | from one end, as far as it pays | from the same end | KSW2's extension, with Z-drop and end bonus |
 | `local(m)` | any part | any part | Smith-Waterman |
 
-Free ends minimize the cost alone, as Edlib and WFA2-lib count it; `mode.with_match_score(m)` makes a
-match earn `m` and maximizes the score instead, as parasail and mappers score a read in a window.
+By default, free-end modes minimize the cost alone, as Edlib and WFA2-lib do. With
+`mode.with_match_score(m)`, each match earns `m` and the alignment maximizes the score instead, as
+parasail and read mappers score a read in a window.
 
 ## Cost models
 
@@ -214,35 +251,50 @@ match earn `m` and maximizes the score instead, as parasail and mappers score a 
 | `costs.with_deletions(o, e, ...)` | deletions priced apart from insertions, bwa's `-O del,ins` |
 | `Scoring.tabulated(...)`, `Scoring.dna()` | any alphabet's substitution table with affine gap scores |
 
-Within a band of diagonals (`band=Band.around(w)`, KSW2's `w`) and under a cost cap (`max_cost=`)
-the result is still the exact optimum of the alignments allowed.
+The result stays exact under a band of diagonals (`band=Band.around(w)`, KSW2's `w`) and under a cost
+cap (`max_cost=`): it is the optimum of the alignments those limits allow.
+
+## How it works
+
+| problem | method |
+| :-- | :-- |
+| unit costs (edit distance) | diagonal transition for near-identical pairs, from one end and then from both; then A\*PA2's bit-parallel band doubling, pruned by its gap-chaining seed heuristic on long pairs |
+| gap-affine and two-piece costs | a gap-affine wavefront, from one end and then from both (after WFA and BiWFA); a pair far apart is handed to a full sweep in 8-bit difference recurrences (after Suzuki and Kasahara) |
+| local alignment, overlaps, rewarded free ends | an anti-diagonal sweep in 16-bit SIMD lanes while the scores fit, then an extension back from the best end |
+| batches of short pairs | inter-sequence SIMD: one pair per lane, over a band of diagonals that each pair's own cost proves sufficient |
+| GPU scores | a band of sixteen diagonals per thread, the rest scored whole, several pairs per warp |
+
+The engines hand a pair over by fixed rules, not tuned thresholds: a cheaper method gives up only after
+a set share of the work the next method would need. The handover changes only the speed; every engine
+returns the same exact cost and the same CIGAR.
 
 ## Documentation
 
-- [docs/API.md](docs/API.md): the reference for everything the Mojo package exports.
-- [c/dinara.h](c/dinara.h): the C and C++ API, every function and error code documented.
+- [docs/API.md](docs/API.md): reference for everything the Mojo package exports.
+- [c/dinara.h](c/dinara.h): the C and C++ API, with every function and error code documented.
 - The Python package's docstrings, and `dinara-align --help` for the command line.
-- [benchmarks/README.md](benchmarks/README.md): the benchmarks, their setup and full results.
+- [benchmarks/README.md](benchmarks/README.md): benchmark setup, datasets, full results and profiling tools.
 - [CHANGELOG.md](CHANGELOG.md): what each release changes.
 
-## Testing
+## Development
 
 ```bash
 pixi run test          # the Mojo test suite
-pixi run fuzz          # random pairs, costs, modes, bands and caps, held to a full matrix
+pixi run fuzz          # random pairs, costs, modes, bands and caps, checked against a full matrix
 pixi run test-wfa      # WFA2-lib's regression set, scores and CIGARs
 pixi run test-c        # the C and C++ API
 pixi run test-python   # the Python package
 pixi run test-cli      # the command line
+pixi run format        # mojo format, 120 columns
 ```
 
-## Acknowledgements
+## Acknowledgements and citation
 
 The unit-cost edit distance is ported from `pa-bitpacking` in
 [A\*PA](https://github.com/RagnarGrootKoerkamp/astar-pairwise-aligner) by Ragnar Groot Koerkamp and
 Pesho Ivanov, and follows A\*PA2's band doubling and seed heuristic. The gap-affine search follows WFA
-and BiWFA by Santiago Marco-Sola and colleagues. If you use dinara-align, please also cite the work
-it builds on:
+and BiWFA by Santiago Marco-Sola and colleagues. If you use dinara-align, please also cite the work it
+builds on:
 
 - R. Groot Koerkamp. *A\*PA2: up to 19× faster exact global alignment.* WABI 2024.
 - R. Groot Koerkamp and P. Ivanov. *Exact global alignment using A\* with chaining seed heuristic and
@@ -254,5 +306,5 @@ it builds on:
 
 ## License
 
-dinara-align is licensed under the [Mozilla Public License 2.0](LICENSE). [NOTICE](NOTICE) credits
-the work it builds on.
+dinara-align is licensed under the [Mozilla Public License 2.0](LICENSE). [NOTICE](NOTICE) credits the
+work it builds on.

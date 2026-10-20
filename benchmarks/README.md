@@ -66,8 +66,8 @@ aligner: each tool's time is the faster of two passes over a workload, its mean 
 
 All tables were measured on an Intel Core i9-7900X (Skylake-X, AVX-512), ten cores at a fixed 3.3 GHz,
 turbo boost and hyper-threading off, 91 GB, Ubuntu 26.04, on the otherwise idle machine, every tool on one
-core pinned with `taskset` unless a row says otherwise, dinara-align at `87d365f`
-for every table but the ablation (`dc980d7`); Rust nightly
+core pinned with `taskset` unless a row says otherwise, dinara-align at `7fb47d5` (the rivals at `87d365f`'s
+session) for every table but the ablation (`dc980d7`); Rust nightly
 2026-08-14, GCC 15.2, Mojo 1.1.0.
 
 ## Datasets
@@ -191,13 +191,13 @@ Growth of peak memory aligning a pair, median and largest, as A\*PA2's Table 10 
 | l1000000.n100.e10 | 9.3 / 46 MB | — | 0.6 / 67 MB | 0.6 / 99 MB | 13 / 151 MB | 7.9 / 7.9 MB | 19 / 19 MB | — | — | 0.9 / 24 MB | — |
 | l1000000.n100.e20 | 15 / 131 MB | — | 0.4 / 184 MB | 2.9 / 192 MB | — | — | — | — | — | 0.1 / 26 MB | — |
 
-- **dinara-align is the fastest on every one of the 25 datasets**, 1.1 to 5.1 times the next fastest exact
-  aligner: 20.8 against WFA's 31.3 µs on ont-1k, 582 against A\*PA2-simple's 941 µs on ont-50k, 3.99
-  against 6.76 ms on the PromethION reads, 118 against A\*PA2-full's 284 ms on the 500 kbp reads, 277
-  against 727 µs on the SARS-CoV-2 genomes, 0.593 against WFA's 1.12 µs on the Illumina reads and 12.9
-  against 66.0 µs on the HiFi reads, and 890 ms against 2.02 s on the 1 Mbp pairs at 20%. The closest is
-  QuickEd's 10 kbp pairs at 5%, 268 against A\*PA2-simple's 288 µs. Against QuickEd itself, the latest of
-  them, 3.0 to 74 times, 7.8 in the geometric mean.
+- **dinara-align is the fastest on every one of the 25 datasets**, 1.4 to 7.0 times the next fastest exact
+  aligner: 15.8 against WFA's 31.3 µs on ont-1k, 534 against A\*PA2-simple's 941 µs on ont-50k, 4.09
+  against 6.76 ms on the PromethION reads, 116 against A\*PA2-full's 284 ms on the 500 kbp reads, 230
+  against 727 µs on the SARS-CoV-2 genomes, 0.435 against WFA's 1.12 µs on the Illumina reads and 9.37
+  against 66.0 µs on the HiFi reads, and 886 ms against 2.02 s on the 1 Mbp pairs at 20%. The closest is
+  QuickEd's 10 kbp pairs at 10%, 315 against A\*PA2-simple's 444 µs. Against QuickEd itself, the latest of
+  them, 3.5 to 102 times, 8.9 in the geometric mean.
 - **Near-identical pairs run diagonal transition**, as WFA does, before any band: one front keeping its
   history for a close pair, two from both ends otherwise, each kept for the traceback. It stays on while
   it costs less than the band would, which at 1 to 3% covers most pairs up to tens of kbp.
@@ -255,18 +255,18 @@ exact aligners that take them, a 30 s budget a tool a dataset:
 | ksw2 | 11.0× | 38.6× | 227.4× | 14 |
 | bsalign | 2.1× | 25.8× | 1156.1× | 10 |
 
-- **dinara-align is the fastest on every dataset any tool finished, the Illumina reads a tie**: 105 against
-  WFA's 189 µs on ont-1k, 1.62 against 4.86 ms on ont-10k, 21.7 against BiWFA's 54.9 ms on ont-50k, 286
-  against BiWFA's 576 ms on the PromethION reads, where WFA ran out of memory after 7 of 22, 698 µs against
-  1.78 ms on the SARS-CoV-2 genomes, 92.9 against 225 µs on the HiFi reads, and 19.9 against BSAlign's
-  37.5 ms on 10 kbp pairs at 20%, where BSAlign's 8-bit difference sweep, whose time does not depend on the
-  divergence, comes close. On the Illumina reads it takes 1.51 against WFA's 1.54 µs, within the spread of
-  its rounds: a pair that close is aligned by one search, as WFA aligns it, grown alone while it steps no
+- **dinara-align is the fastest on every dataset any tool finished**, 1.3 to 3.7 times the next fastest: 97.8
+  against WFA's 189 µs on ont-1k, 1.42 against 4.86 ms on ont-10k, 18.6 against BiWFA's 54.9 ms on ont-50k,
+  231 against BiWFA's 576 ms on the PromethION reads, where WFA ran out of memory after 7 of 22, 628 µs
+  against 1.78 ms on the SARS-CoV-2 genomes, 74.3 against 225 µs on the HiFi reads, and 17.5 against
+  BSAlign's 37.5 ms on 10 kbp pairs at 20%, where BSAlign's 8-bit difference sweep, whose time does not
+  depend on the divergence, comes closest among the long pairs. On the Illumina reads it takes 1.17 against
+  WFA's 1.54 µs: a pair that close is aligned by one search, as WFA aligns it, grown alone while it steps no
   more diagonals than the two searches would, its fronts measured as it grows.
-- **The batch call is slow on HiFi reads at gap-affine costs**, 812 µs a pair against 93 one at a time,
+- **The batch call is slow on HiFi reads at gap-affine costs**, 799 µs a pair against 74 one at a time,
   for a reason not yet found (see `TODO.md`).
-- **It finishes more of the long pairs than anyone**: 7 of the 10 100 kbp pairs at 20% in every round where
-  BiWFA finishes 4, two 500 kbp pairs at 5% to BiWFA's one, and one ont-500k-genvar read. No tool finishes a
+- **It finishes more of the long pairs than anyone**: 9 of the 10 100 kbp pairs at 20% in every round where
+  BiWFA finishes 4, three 500 kbp pairs at 5% to BiWFA's one, one at 10%, and one ont-500k-genvar read. No tool finishes a
   1 Mbp pair past 1% in 30 s: the wavefront's work grows with the square of the cost, and gap-affine costs
   have no seed heuristic here to prune it.
 - **A pair far apart is handed to a full sweep** in difference recurrences (Suzuki and Kasahara), 8-bit
@@ -320,10 +320,10 @@ CIGAR, and every tool's costs or scores must agree on every pair, or the run fai
 | overlap-reads | **703 µs** | — | — | — | 15.3 ms | — |
 | infix-reads | **685 µs** | — | — | — | 15.1 ms | — |
 
-- **dinara-align is the fastest on every workload, or tied**: twice Edlib on short infixes and 6.7 times
-  on long ones, 2.8 times KSW2 on extension and 7.5 times with an end bonus, 1.9 times WFA2-lib on two-piece
-  gaps, 15 times parasail on a table globally, and 4.9 times SSW on the long local pairs; the infix at
-  WFA2-lib's costs, 3.92 against 3.96 ms, is a tie.
+- **dinara-align is the fastest on every workload, or tied**: twice Edlib on short infixes and 6.9 times
+  on long ones, 3.2 times KSW2 on extension and 8.3 times with an end bonus, 2.1 times WFA2-lib on two-piece
+  gaps, 15 times parasail on a table globally, and 5.0 times SSW on the long local pairs; the infix at
+  WFA2-lib's costs, 3.83 against 3.95 ms, is close to a tie.
 - **An end bonus aligns a read to its end when that scores within the bonus of the best stop**, as KSW2's
   `end_bonus` and BWA-MEM's clipping penalty decide, and both choose the same alignment on every read.
 - **Local alignment sweeps by anti-diagonal in 16-bit lanes** while the scores fit, a strip of rows at a
@@ -335,7 +335,7 @@ CIGAR, and every tool's costs or scores must agree on every pair, or the run fai
   alignment is traced in bands that prove themselves, a local one found by its end and start and the span
   between aligned globally.
 - **Some rows move by up to a third between builds that do not touch them**, where a loop lands against
-  the Skylake-X's micro-op cache (Intel's JCC erratum fix). The infix at WFA2-lib's costs, 3.92 ms here,
+  the Skylake-X's micro-op cache (Intel's JCC erratum fix). The infix at WFA2-lib's costs, 3.83 ms here,
   takes 3.01 or 3.92 ms from build to build, the same 6.13 billion instructions either way and 2.0 or 2.6
   billion cycles; read a difference of that size between builds as noise.
 
