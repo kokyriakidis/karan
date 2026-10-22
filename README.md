@@ -167,7 +167,14 @@ def main() raises:
     var aligner = Aligner()
     for pair in [("ACGTACGTTTGCA", "ACGTCGTTTTGCA"), ("ACGTAC", "ACGAC")]:
         print(aligner.align(pair[0], pair[1]).cigar)  # 4=1D2=1I6=, then 3=1D2=
+    var read: List[UInt8] = [65, 67, 71, 84, 65, 67]  # ACGTAC, held as bytes
+    print(aligner.align(Span(read), "ACGAC".as_bytes()).cigar)  # 3=1D2=, no String made
 ```
+
+Every single-pair call under `Costs` (`distance`, `align`, `score`, `local_scores` and `Aligner`'s
+`distance` and `align`, capped or not) takes the two sequences as `String`s or as byte spans, a
+`List[UInt8]`'s or any buffer's, read where they lie: a caller holding bytes makes no `String` a call,
+which cost a 64 bp pair's unit-cost alignment a third of its time.
 
 Build against the source tree with `mojo build -I path/to/karan program.mojo`, or from inside
 this repository with `pixi run mojo build -I . program.mojo`.

@@ -18,7 +18,7 @@ alignment whose reward folds into the costs (see `rewarded_alignment`).
 
 
 from .common import SubstitutionDType
-from .cigar import reversed_list, cigar_counts, cigar_matches, cigar_runs, reversed_cigar, reversed_text, text_of
+from .cigar import reversed_list, cigar_counts, cigar_matches, cigar_runs, reversed_cigar
 from .errors import AlignmentError
 from .gap_affine import kept_bytes, rings_within
 from .gap_affine import (
@@ -531,12 +531,12 @@ def end_of(
 
 
 def latest_local(
-    reference: String, query: String, costs: Costs, match_score: Int, eqx: Bool, limit: Int
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, match_score: Int, eqx: Bool, limit: Int
 ) raises AlignmentError -> Alignment:
     """The best local alignment ending as late as an equally good one allows (see `best_end`) and
     starting as late too, the shortest, its CIGAR by the left rule: the extension back from its end,
     traced as it searched (see `gap_affine.traced_extension`)."""
-    var found = end_of(reference.as_bytes(), query.as_bytes(), costs, match_score)
+    var found = end_of(reference, query, costs, match_score)
     if found[0] == 0:
         return Alignment(0, 0, String(), 0, 0, 0, 0)
     var end_column = found[1]
@@ -544,8 +544,8 @@ def latest_local(
     var two = costs.pieces() == 2
     var penalties = rewarded_penalties(match_score, costs)
     rings_within(penalties, end_column, end_row, kept_bytes(limit))
-    var head = text_of(reference.as_bytes()[:end_column])
-    var lead = text_of(query.as_bytes()[:end_row])
+    var head = reference[:end_column]
+    var lead = query[:end_row]
     # The best alignment ending at that cell, and starting wherever pays: an extension back from it,
     # which stops on earning the sweep's score, the best any alignment ending there earns.
     var traced = traced_extension[2](head, lead, penalties, eqx, found[0], limit) if two else traced_extension[1](
@@ -558,9 +558,11 @@ def latest_local(
     else:
         # Too many fronts to keep: the extension's own search and split, by the left rule too, over
         # both sequences reversed from the end.
+        var head_back = reversed_list(head)
+        var lead_back = reversed_list(lead)
         var mirrored = extension_of[2](
-            reversed_text(head.as_bytes()),
-            reversed_text(lead.as_bytes()),
+            Span(head_back),
+            Span(lead_back),
             penalties,
             eqx,
             Anchor.START,
@@ -569,8 +571,8 @@ def latest_local(
             found[0],
             limit,
         ) if two else extension_of[1](
-            reversed_text(head.as_bytes()),
-            reversed_text(lead.as_bytes()),
+            Span(head_back),
+            Span(lead_back),
             penalties,
             eqx,
             Anchor.START,
@@ -593,7 +595,13 @@ def latest_local(
 
 
 def local_alignment(
-    reference: String, query: String, costs: Costs, match_score: Int, ties: Ties, eqx: Bool, limit: Int
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    match_score: Int,
+    ties: Ties,
+    eqx: Bool,
+    limit: Int,
 ) raises AlignmentError -> Alignment:
     """The best local alignment, a match earning `match_score` (see `Mode.local`).
 
@@ -603,11 +611,11 @@ def local_alignment(
     right."""
     if ties == Ties.LEFT:
         return latest_local(reference, query, costs, match_score, eqx, limit)
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
-    var mirrored = latest_local(
-        reversed_text(reference.as_bytes()), reversed_text(query.as_bytes()), costs, match_score, eqx, limit
-    )
+    var columns = len(reference)
+    var rows = len(query)
+    var reference_back = reversed_list(reference)
+    var query_back = reversed_list(query)
+    var mirrored = latest_local(Span(reference_back), Span(query_back), costs, match_score, eqx, limit)
     if mirrored.score == 0:
         return mirrored^
     return mirrored.mirrored(columns, rows)
@@ -634,14 +642,14 @@ def started_span[
 
 
 def rewarded_span(
-    reference: String, query: String, costs: Costs, match_score: Int, ends: EndsFree
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, match_score: Int, ends: EndsFree
 ) -> Tuple[Int, Int, Int, Int, Int]:
     """The best score with `ends`' letters free and a match earning `match_score`, and the span the rule
     of `Ties.LEFT` names (see `gap_affine.free_ends_alignment`): its end on the highest diagonal an
     optimum reaches, by a sweep from the edges, and its start on the highest of those ending there, by
     a sweep back from that end over both sequences reversed, to the letters free at the start. The
     score, then the start's and the end's columns and rows."""
-    var forward = swept[FROM_EDGE](reference.as_bytes(), query.as_bytes(), costs, match_score, ends)
+    var forward = swept[FROM_EDGE](reference, query, costs, match_score, ends)
 
     def back(
         head: List[UInt8], lead: List[UInt8], starts: EndsFree
@@ -649,12 +657,12 @@ def rewarded_span(
         """The sweep back, the lowest diagonal of the reversed sequences."""
         return swept[FROM_EDGE](Span(head), Span(lead), costs, match_score, starts, False)
 
-    return started_span(reference.as_bytes(), query.as_bytes(), ends, forward, back)
+    return started_span(reference, query, ends, forward, back)
 
 
 def rewarded_alignment(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     match_score: Int,
     ends: EndsFree,
@@ -672,13 +680,15 @@ def rewarded_alignment(
     with a reward, whose letters are fixed, so the reward folds into the costs (see `gap_affine`) and
     the wavefront aligns it, its CIGAR the one `ties` picks. A gap past the free letters at either end
     lies inside the span, as it is paid."""
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     var span: Tuple[Int, Int, Int, Int, Int]
     if ties == Ties.RIGHT:
+        var reference_back = reversed_list(reference)
+        var query_back = reversed_list(query)
         var mirrored = rewarded_span(
-            reversed_text(reference.as_bytes()),
-            reversed_text(query.as_bytes()),
+            Span(reference_back),
+            Span(query_back),
             costs,
             match_score,
             EndsFree(ends.first_end, ends.first_begin, ends.second_end, ends.second_begin),
@@ -692,15 +702,15 @@ def rewarded_alignment(
     var end_row = span[4]
     if start_column == end_column and start_row == end_row:
         return Alignment(0, span[0], String(), start_column, end_column, start_row, end_row)
-    var part = text_of(reference.as_bytes()[start_column:end_column])
-    var piece = text_of(query.as_bytes()[start_row:end_row])
-    var found = global_rewarded(part, piece, costs, match_score, Band(), ties, eqx, limit)
+    var found = global_rewarded(
+        reference[start_column:end_column], query[start_row:end_row], costs, match_score, Band(), ties, eqx, limit
+    )
     return Alignment(found[0], span[0], found[1], start_column, end_column, start_row, end_row)
 
 
 def global_rewarded(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     match_score: Int,
     band: Band,
@@ -713,7 +723,7 @@ def global_rewarded(
     when none fits the band."""
     var two = costs.pieces() == 2
     var penalties = rewarded_penalties(match_score, costs)
-    rings_within(penalties, reference.byte_length(), query.byte_length(), kept_bytes(limit))
+    rings_within(penalties, len(reference), len(query), kept_bytes(limit))
     var found = cigar_within[2](reference, query, penalties, eqx, Int.MAX, band, ties, limit) if two else cigar_within[
         1
     ](reference, query, penalties, eqx, Int.MAX, band, ties, limit)
@@ -724,7 +734,7 @@ def global_rewarded(
     return (cost, cigar^)
 
 
-def costs_of_cigar(reference: String, query: String, cigar: String, costs: Costs) -> Int:
+def costs_of_cigar(reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], cigar: String, costs: Costs) -> Int:
     """What a CIGAR of `reference` against `query` costs: its substitutions, `M` runs compared letter
     by letter, and each gap run at its direction's cheaper piece."""
     var runs = cigar_runs(cigar)
@@ -733,4 +743,4 @@ def costs_of_cigar(reference: String, query: String, cigar: String, costs: Costs
         var letter = runs[0][index]
         if letter == UInt8(ord("D")) or letter == UInt8(ord("I")):
             gaps += costs.gap(runs[1][index], letter == UInt8(ord("D")))
-    return cigar_counts(reference.as_bytes(), query.as_bytes(), cigar).mismatches * costs.mismatch + gaps
+    return cigar_counts(reference, query, cigar).mismatches * costs.mismatch + gaps

@@ -5,6 +5,7 @@ The entry points a caller uses, each deciding which search serves a pair so the 
 
 Under `Costs`, which an alignment minimizes, `distance` finds the least cost and `align` an optimal
 alignment as a CIGAR, for any `Mode`; `distances` and `alignments` take a batch, many pairs at once.
+A single pair comes as two `String`s or as two byte spans, read where they lie.
 Every call runs on the caller's own thread unless asked for more (see `distances`), and keeps no state
 between calls, so an application may call it from as many threads as it likes; an `Aligner` keeps one
 thread's memory from call to call.
@@ -30,7 +31,7 @@ from .device_edit import MAX_PATTERN_WORDS, device_edit_distances
 from .edit_distance import edit_cigar, edit_distance
 from .edit_search import EditHit, edit_search
 from .errors import AlignmentError, ErrorKind
-from .cigar import cigar_matches, cigar_runs, reversed_text, text_of
+from .cigar import cigar_matches, cigar_runs, reversed_list
 from .search import Hit, local_scores_by_lane
 from .scored import (
     FROM_EDGE,
@@ -42,7 +43,7 @@ from .scored import (
     rewarded_alignment,
     swept,
 )
-from .lanes import LaneCosts, StringTexts, Texts, lane_alignments, lane_distances, lane_free_alignments
+from .lanes import LaneCosts, SpanTexts, StringTexts, Texts, lane_alignments, lane_distances, lane_free_alignments
 from .gap_affine import kept_bytes, rings_fit, rings_within
 from .gap_affine import (
     AffineCigar,
@@ -92,6 +93,23 @@ def distance(
     it could cross, raise the guess until the answer fits under it. Other costs take the wavefront from
     both ends, keeping only a few costs' fronts, so a few rows of memory however long the pair.
     """
+    var found = cost_within(reference.as_bytes(), query.as_bytes(), costs, mode, band, Int.MAX)
+    if not found:
+        raise outside(band)
+    return found.value()
+
+
+def distance(
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs = Costs.edit(),
+    mode: Mode = Mode.GLOBAL,
+    *,
+    band: Band = Band(),
+) raises AlignmentError -> Int:
+    """`distance` over the two sequences' bytes where they lie, a `List[UInt8]`'s or any buffer's, no
+    `String` made of them: the same cost. Each single-pair call under `Costs` has such an overload, and
+    every search beneath it reads the bytes alone, so the `String` overloads pass theirs down."""
     var found = cost_within(reference, query, costs, mode, band, Int.MAX)
     if not found:
         raise outside(band)
@@ -110,6 +128,19 @@ def distance(
     """`distance`, or None when it would pass `max_cost` or no alignment fits `band`: the searches stop
     once each has grown to about half of `max_cost` without the two meeting within it, so a pair far
     over costs a fraction of its full search."""
+    return cost_within(reference.as_bytes(), query.as_bytes(), costs, mode, band, max_cost)
+
+
+def distance(
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs = Costs.edit(),
+    mode: Mode = Mode.GLOBAL,
+    *,
+    max_cost: Int,
+    band: Band = Band(),
+) raises AlignmentError -> Optional[Int]:
+    """`distance` under a cap, over the two sequences' bytes."""
     return cost_within(reference, query, costs, mode, band, max_cost)
 
 
@@ -141,6 +172,27 @@ def align(
     `max_memory` too, past which it sweeps stretches of the band again from the edges it kept, the same
     alignment byte for byte (see `band.retrace`). The sweeps keep a few rows whatever the cap.
     """
+    var found = aligned_within(
+        reference.as_bytes(), query.as_bytes(), costs, mode, band, Int.MAX, ties, eqx, max_memory // KEPT_BYTES
+    )
+    if not aligned(found):
+        raise outside(band)
+    return found^
+
+
+def align(
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs = Costs.edit(),
+    mode: Mode = Mode.GLOBAL,
+    *,
+    band: Band = Band(),
+    ties: Ties = Ties.LEFT,
+    eqx: Bool = True,
+    max_memory: Int = DEFAULT_MAX_MEMORY,
+) raises AlignmentError -> Alignment:
+    """`align` over the two sequences' bytes where they lie, no `String` made of them (see `distance`):
+    the same alignment, the CIGAR its `ties` picks byte for byte."""
     var found = aligned_within(reference, query, costs, mode, band, Int.MAX, ties, eqx, max_memory // KEPT_BYTES)
     if not aligned(found):
         raise outside(band)
@@ -162,6 +214,26 @@ def align(
     """`align`, or None when the cost would pass `max_cost` or no alignment fits `band`, found as
     `distance` finds that, with no fronts traced. A mode with a match score, which maximizes a score,
     takes no cap."""
+    return optional(
+        aligned_within(
+            reference.as_bytes(), query.as_bytes(), costs, mode, band, max_cost, ties, eqx, max_memory // KEPT_BYTES
+        )
+    )
+
+
+def align(
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs = Costs.edit(),
+    mode: Mode = Mode.GLOBAL,
+    *,
+    max_cost: Int,
+    band: Band = Band(),
+    ties: Ties = Ties.LEFT,
+    eqx: Bool = True,
+    max_memory: Int = DEFAULT_MAX_MEMORY,
+) raises AlignmentError -> Optional[Alignment]:
+    """`align` under a cap, over the two sequences' bytes."""
     return optional(aligned_within(reference, query, costs, mode, band, max_cost, ties, eqx, max_memory // KEPT_BYTES))
 
 
@@ -217,6 +289,21 @@ struct Aligner(Movable):
         band: Band = Band(),
     ) raises AlignmentError -> Int:
         """`distance`, through this aligner's memory."""
+        var found = cost_within(reference.as_bytes(), query.as_bytes(), costs, mode, band, Int.MAX, self.space)
+        if not found:
+            raise outside(band)
+        return found.value()
+
+    def distance(
+        mut self,
+        reference: ImmSpan[UInt8, _],
+        query: ImmSpan[UInt8, _],
+        costs: Costs = Costs.edit(),
+        mode: Mode = Mode.GLOBAL,
+        *,
+        band: Band = Band(),
+    ) raises AlignmentError -> Int:
+        """`distance` over the two sequences' bytes, through this aligner's memory."""
         var found = cost_within(reference, query, costs, mode, band, Int.MAX, self.space)
         if not found:
             raise outside(band)
@@ -233,6 +320,19 @@ struct Aligner(Movable):
         band: Band = Band(),
     ) raises AlignmentError -> Optional[Int]:
         """`distance` under a cap, through this aligner's memory."""
+        return cost_within(reference.as_bytes(), query.as_bytes(), costs, mode, band, max_cost, self.space)
+
+    def distance(
+        mut self,
+        reference: ImmSpan[UInt8, _],
+        query: ImmSpan[UInt8, _],
+        costs: Costs = Costs.edit(),
+        mode: Mode = Mode.GLOBAL,
+        *,
+        max_cost: Int,
+        band: Band = Band(),
+    ) raises AlignmentError -> Optional[Int]:
+        """`distance` under a cap over the two sequences' bytes, through this aligner's memory."""
         return cost_within(reference, query, costs, mode, band, max_cost, self.space)
 
     def align(
@@ -248,6 +348,36 @@ struct Aligner(Movable):
         max_memory: Int = DEFAULT_MAX_MEMORY,
     ) raises AlignmentError -> Alignment:
         """`align`, through this aligner's memory: the same alignment, the CIGAR its `ties` picks."""
+        var found = aligned_within(
+            reference.as_bytes(),
+            query.as_bytes(),
+            costs,
+            mode,
+            band,
+            Int.MAX,
+            ties,
+            eqx,
+            max_memory // KEPT_BYTES,
+            self.space,
+        )
+        if not aligned(found):
+            raise outside(band)
+        return found^
+
+    def align(
+        mut self,
+        reference: ImmSpan[UInt8, _],
+        query: ImmSpan[UInt8, _],
+        costs: Costs = Costs.edit(),
+        mode: Mode = Mode.GLOBAL,
+        *,
+        band: Band = Band(),
+        ties: Ties = Ties.LEFT,
+        eqx: Bool = True,
+        max_memory: Int = DEFAULT_MAX_MEMORY,
+    ) raises AlignmentError -> Alignment:
+        """`align` over the two sequences' bytes, through this aligner's memory: a caller holding its
+        sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call."""
         var found = aligned_within(
             reference, query, costs, mode, band, Int.MAX, ties, eqx, max_memory // KEPT_BYTES, self.space
         )
@@ -271,6 +401,35 @@ struct Aligner(Movable):
         """`align` under a cap, through this aligner's memory."""
         return optional(
             aligned_within(
+                reference.as_bytes(),
+                query.as_bytes(),
+                costs,
+                mode,
+                band,
+                max_cost,
+                ties,
+                eqx,
+                max_memory // KEPT_BYTES,
+                self.space,
+            )
+        )
+
+    def align(
+        mut self,
+        reference: ImmSpan[UInt8, _],
+        query: ImmSpan[UInt8, _],
+        costs: Costs = Costs.edit(),
+        mode: Mode = Mode.GLOBAL,
+        *,
+        max_cost: Int,
+        band: Band = Band(),
+        ties: Ties = Ties.LEFT,
+        eqx: Bool = True,
+        max_memory: Int = DEFAULT_MAX_MEMORY,
+    ) raises AlignmentError -> Optional[Alignment]:
+        """`align` under a cap over the two sequences' bytes, through this aligner's memory."""
+        return optional(
+            aligned_within(
                 reference, query, costs, mode, band, max_cost, ties, eqx, max_memory // KEPT_BYTES, self.space
             )
         )
@@ -283,10 +442,22 @@ def score(
     matches' reward less its costs, else minus the least cost, `distance`'s. A local alignment or free
     ends with a reward take the sweep alone, an extension its search alone, and a global alignment
     with a reward the wavefront's cost with the reward folded in, so each skips the traceback."""
+    return score(reference.as_bytes(), query.as_bytes(), costs, mode, band=band)
+
+
+def score(
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    mode: Mode = Mode.GLOBAL,
+    *,
+    band: Band = Band(),
+) raises AlignmentError -> Int:
+    """`score` over the two sequences' bytes, no `String` made of them."""
     if not mode.is_scored():
         return -distance(reference, query, costs, mode, band=band)
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     var two = costs.pieces() == 2
     _ = penalties_of(costs)
     var penalties = rewarded_penalties(mode.match_score, costs)
@@ -299,8 +470,8 @@ def score(
         if mode.end_bonus > 0 and not band.covers(columns, rows):
             raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "an end bonus takes no band")
         var found = extend[2](
-            reference.as_bytes(),
-            query.as_bytes(),
+            reference,
+            query,
             penalties,
             band,
             at_end,
@@ -309,8 +480,8 @@ def score(
             drop_extension,
             mode.end_bonus,
         ) if two else extend[1](
-            reference.as_bytes(),
-            query.as_bytes(),
+            reference,
+            query,
             penalties,
             band,
             at_end,
@@ -337,10 +508,8 @@ def score(
     if mode.kind == Mode.ENDS and mode.is_global():
         rings_within(penalties, columns, rows, DEFAULT_MAX_MEMORY)
         var cost = wavefront_distance[2](
-            reference.as_bytes(), query.as_bytes(), penalties, Int.MAX, EndsFree(), band
-        ) if two else wavefront_distance[1](
-            reference.as_bytes(), query.as_bytes(), penalties, Int.MAX, EndsFree(), band
-        )
+            reference, query, penalties, Int.MAX, EndsFree(), band
+        ) if two else wavefront_distance[1](reference, query, penalties, Int.MAX, EndsFree(), band)
         if cost < 0:
             raise outside(band)
         return penalties.score(cost, columns + rows)
@@ -351,10 +520,8 @@ def score(
     if not band.covers(columns, rows):
         raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "a sweep takes no band: a local alignment or free ends")
     if mode.kind == Mode.SMITH_WATERMAN:
-        return end_of(reference.as_bytes(), query.as_bytes(), costs, mode.match_score)[0]
-    return swept[FROM_EDGE](
-        reference.as_bytes(), query.as_bytes(), costs, mode.match_score, EndsFree.of(mode, columns, rows)
-    )[0]
+        return end_of(reference, query, costs, mode.match_score)[0]
+    return swept[FROM_EDGE](reference, query, costs, mode.match_score, EndsFree.of(mode, columns, rows))[0]
 
 
 def local_scores(
@@ -364,27 +531,32 @@ def local_scores(
     more than `window` reference letters away, as SSW's `score2` and `ref_end2` report it for a mapping
     quality (see `LocalScores`): one sweep, with no alignment traced. The window is half the query, and
     at least 15, by default, as SSW suggests."""
+    return local_scores(reference.as_bytes(), query.as_bytes(), costs, mode, window=window)
+
+
+def local_scores(
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, mode: Mode, *, window: Optional[Int] = None
+) raises AlignmentError -> LocalScores:
+    """`local_scores` over the two sequences' bytes, no `String` made of them."""
     if mode.kind != Mode.SMITH_WATERMAN or mode.match_score <= 0:
         raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "local scores for a local alignment: Mode.local")
     _ = penalties_of(costs)
-    var span = window.or_else(max(query.byte_length() // 2, 15))
-    return local_scores_of(reference.as_bytes(), query.as_bytes(), costs, mode.match_score, span)
+    var span = window.or_else(max(len(query) // 2, 15))
+    return local_scores_of(reference, query, costs, mode.match_score, span)
 
 
 def distance_in_lanes(
-    reference: String, query: String, costs: Costs, mode: Mode, band: Band, max_cost: Int
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, mode: Mode, band: Band, max_cost: Int
 ) -> Optional[Optional[Int]]:
     """The pair's capped cost as a batch of it alone settles it in the lanes (see `distances_in_lanes`), or
     None when they leave it: a call whose searches' rings could pass the memory allowed takes it, so it
     answers as its batch does, and is refused only where the batch's own search is."""
-    var references: List[String] = [reference]
-    var queries: List[String] = [query]
     var found = List[Optional[Int]](length=1, fill=None)
     var settled = List[Bool](length=1, fill=False)
     _ = distances_in_lanes(
         1,
-        StringTexts.of(references),
-        StringTexts.of(queries),
+        SpanTexts.of(reference),
+        SpanTexts.of(query),
         costs,
         mode,
         band,
@@ -393,17 +565,14 @@ def distance_in_lanes(
         found.unsafe_ptr(),
         settled.unsafe_ptr(),
     )
-    # The texts read both lists through pointers, so both must outlive the lanes.
-    _ = references^
-    _ = queries^
     if not settled[0]:
         return None
     return Optional[Optional[Int]](found[0])
 
 
 def alignment_in_lanes(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     mode: Mode,
     band: Band,
@@ -414,8 +583,6 @@ def alignment_in_lanes(
 ) -> Optional[Optional[Alignment]]:
     """The pair's capped alignment as a batch of it alone settles it in the lanes (see `alignments_in_lanes`),
     or None when they leave it (see `distance_in_lanes`)."""
-    var references: List[String] = [reference]
-    var queries: List[String] = [query]
     var laned = List[Optional[Int]](length=1, fill=None)
     var paths = List[List[UInt8]](capacity=1)
     paths.append(List[UInt8]())
@@ -423,8 +590,8 @@ def alignment_in_lanes(
     var settled = List[Bool](length=1, fill=False)
     var penalties = alignments_in_lanes(
         1,
-        StringTexts.of(references),
-        StringTexts.of(queries),
+        SpanTexts.of(reference),
+        SpanTexts.of(query),
         costs,
         mode,
         band,
@@ -437,8 +604,6 @@ def alignment_in_lanes(
         spans.unsafe_ptr(),
         settled.unsafe_ptr(),
     )
-    _ = references^
-    _ = queries^
     if not settled[0]:
         return None
     if not laned[0]:
@@ -446,8 +611,8 @@ def alignment_in_lanes(
     var moves = List[UInt8]()
     swap(moves, paths[0])
     var spelled = alignment_from_lanes(
-        reference.as_bytes(),
-        query.as_bytes(),
+        reference,
+        query,
         laned[0].value(),
         moves^,
         spans.unsafe_ptr(),
@@ -461,7 +626,7 @@ def alignment_in_lanes(
 
 
 def cost_within(
-    reference: String, query: String, costs: Costs, mode: Mode, band: Band, max_cost: Int
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, mode: Mode, band: Band, max_cost: Int
 ) raises AlignmentError -> Optional[Int]:
     """The least cost, or None when it would pass `max_cost` (`Int.MAX` for no cap) or none fits `band`."""
     var space = SearchSpace()
@@ -469,7 +634,13 @@ def cost_within(
 
 
 def cost_within(
-    reference: String, query: String, costs: Costs, mode: Mode, band: Band, max_cost: Int, mut space: SearchSpace
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    mode: Mode,
+    band: Band,
+    max_cost: Int,
+    mut space: SearchSpace,
 ) raises AlignmentError -> Optional[Int]:
     """`cost_within` through `space`'s searches, which a batch's worker keeps from pair to pair (see
     `gap_affine.SearchSpace`)."""
@@ -477,8 +648,8 @@ def cost_within(
         raise AlignmentError(
             ErrorKind.INVALID_ARGUMENT, "a mode with a match score maximizes a score, which `align` finds"
         )
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     var ends = EndsFree.of(mode, columns, rows)
     if swept_by_bits(costs, ends, band, max_cost, columns, rows):
         try:
@@ -489,7 +660,9 @@ def cost_within(
             var found: Int
             if ends.first_end == 0:
                 # A suffix: a prefix of both reversed.
-                found = edit_search(reversed_text(query.as_bytes()), reversed_text(reference.as_bytes()), True).distance
+                var query_back = reversed_list(query)
+                var reference_back = reversed_list(reference)
+                found = edit_search(Span(query_back), Span(reference_back), True).distance
             else:
                 found = edit_search(query, reference, ends.first_begin == 0).distance
             space.edit.tally.since(SEARCH_NS, started)
@@ -503,20 +676,20 @@ def cost_within(
     var penalties = space.penalties_for(costs)
     if max_cost < 0:
         return None
-    if not rings_fit(penalties, reference.byte_length(), query.byte_length(), DEFAULT_MAX_MEMORY, ends):
+    if not rings_fit(penalties, len(reference), len(query), DEFAULT_MAX_MEMORY, ends):
         # The lanes first, as a batch of this pair alone takes it; else refused.
         var laned = distance_in_lanes(reference, query, costs, mode, band, max_cost)
         if laned:
             space.edit.tally.set(ENGINE, ENGINE_LANES)
             return laned.value()
-        rings_within(penalties, reference.byte_length(), query.byte_length(), DEFAULT_MAX_MEMORY, ends)
+        rings_within(penalties, len(reference), len(query), DEFAULT_MAX_MEMORY, ends)
     # No cap is the usual case, and a 64-bit division per pair counts when short reads take a microsecond.
     var ceiling = Int.MAX if max_cost == Int.MAX else max_cost // penalties.scale
     var cost: Int
     if costs.pieces() == 2:
-        cost = wavefront_distance[2](reference.as_bytes(), query.as_bytes(), penalties, ceiling, space, ends, band)
+        cost = wavefront_distance[2](reference, query, penalties, ceiling, space, ends, band)
     else:
-        cost = wavefront_distance[1](reference.as_bytes(), query.as_bytes(), penalties, ceiling, space, ends, band)
+        cost = wavefront_distance[1](reference, query, penalties, ceiling, space, ends, band)
     space.tally_wavefronts(started)
     if cost < 0:
         return None
@@ -550,8 +723,8 @@ def optional(var alignment: Alignment) -> Optional[Alignment]:
 
 
 def aligned_within(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     mode: Mode,
     band: Band,
@@ -568,8 +741,8 @@ def aligned_within(
 
 
 def aligned_within(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     mode: Mode,
     band: Band,
@@ -620,8 +793,8 @@ def bits_serve(costs: Costs, mode: Mode, band: Band, max_cost: Int) -> Bool:
 
 
 def least_costly(
-    reference: String,
-    query: String,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
     costs: Costs,
     mode: Mode,
     band: Band,
@@ -634,8 +807,8 @@ def least_costly(
     """The least costly alignment with `mode`'s free ends, or `not_found()`: by the bit-parallel sweep
     where it serves the pair (see `swept_by_bits`), else by the wavefront, the same alignment at the same
     costs, through `space`'s searches."""
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     var ends = EndsFree.of(mode, columns, rows)
     if swept_by_bits(costs, ends, band, max_cost, columns, rows):
         try:
@@ -649,9 +822,11 @@ def least_costly(
             if ends.first_end == 0:
                 # A suffix: a prefix of both reversed, the rule's span mirrored, as `Ties.RIGHT` is `Ties.LEFT`
                 # over both reversed.
+                var query_back = reversed_list(query)
+                var reference_back = reversed_list(reference)
                 var mirrored = edit_search(
-                    reversed_text(query.as_bytes()),
-                    reversed_text(reference.as_bytes()),
+                    Span(query_back),
+                    Span(reference_back),
                     True,
                     Ties.RIGHT if ties == Ties.LEFT else Ties.LEFT,
                 )
@@ -659,8 +834,7 @@ def least_costly(
             else:
                 hit = edit_search(query, reference, ends.first_begin == 0, ties)
             space.edit.tally.since(SEARCH_NS, started)
-            var part = text_of(reference.as_bytes()[hit.start : hit.end])
-            var found = edit_cigar(part, query, space.edit, eqx, ties, kept_bytes(limit))
+            var found = edit_cigar(reference[hit.start : hit.end], query, space.edit, eqx, ties, kept_bytes(limit))
             var cost = found.distance * scale
             return Alignment(cost, -cost, found^.take_cigar(), hit.start, hit.end, 0, rows)
         except error:
@@ -670,7 +844,7 @@ def least_costly(
     var penalties = space.penalties_for(costs)
     if max_cost < 0:
         return not_found()
-    if not rings_fit(penalties, reference.byte_length(), query.byte_length(), kept_bytes(limit), ends):
+    if not rings_fit(penalties, len(reference), len(query), kept_bytes(limit), ends):
         # The lanes first, as a batch of this pair alone takes it; else refused.
         var laned = alignment_in_lanes(reference, query, costs, mode, band, max_cost, ties, eqx, limit)
         if laned:
@@ -679,7 +853,7 @@ def least_costly(
             if not spelled:
                 return not_found()
             return spelled.take()
-        rings_within(penalties, reference.byte_length(), query.byte_length(), kept_bytes(limit), ends)
+        rings_within(penalties, len(reference), len(query), kept_bytes(limit), ends)
     var ceiling = Int.MAX if max_cost == Int.MAX else max_cost // penalties.scale
     if mode.is_global():
         var found: Optional[AffineCigar]
@@ -717,13 +891,20 @@ def least_costly(
 
 
 def best_scoring(
-    reference: String, query: String, costs: Costs, mode: Mode, band: Band, ties: Ties, eqx: Bool, limit: Int
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    mode: Mode,
+    band: Band,
+    ties: Ties,
+    eqx: Bool,
+    limit: Int,
 ) raises AlignmentError -> Alignment:
     """The best-scoring alignment for a mode with a match score: an extension by the wavefront from its
     anchor; a global alignment, its letters fixed so the reward folds into the costs, by the wavefront
     too; a local alignment or other free ends by sweep (see `scored`)."""
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     if mode.kind == Mode.EXTENSION:
         return extended_alignment(reference, query, costs, mode, band, ties, eqx, limit)
     if mode.kind == Mode.ENDS and mode.is_global():
@@ -744,14 +925,21 @@ def best_scoring(
 
 
 def extended_alignment(
-    reference: String, query: String, costs: Costs, mode: Mode, band: Band, ties: Ties, eqx: Bool, limit: Int
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    mode: Mode,
+    band: Band,
+    ties: Ties,
+    eqx: Bool,
+    limit: Int,
 ) raises AlignmentError -> Alignment:
     """The best extension from `mode`'s anchor (see `Mode.extension`)."""
-    if mode.end_bonus > 0 and not band.covers(reference.byte_length(), query.byte_length()):
+    if mode.end_bonus > 0 and not band.covers(len(reference), len(query)):
         raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "an end bonus takes no band")
     var two = costs.pieces() == 2
     var penalties = rewarded_penalties(mode.match_score, costs)
-    rings_within(penalties, reference.byte_length(), query.byte_length(), kept_bytes(limit))
+    rings_within(penalties, len(reference), len(query), kept_bytes(limit))
     # The Z-drop's slack a diagonal is the cheapest extension, as KSW2 charges a long gap.
     var drop_extension = costs.cheapest_extension()
     var found = extension_of[2](
@@ -761,13 +949,13 @@ def extended_alignment(
     )
     # The search weighs the end bonus itself (see `extension_of`), but for an empty side or no reward,
     # where it does not run: there the free ends' own alignment through the query is weighed against it.
-    var searched = reference.byte_length() > 0 and query.byte_length() > 0 and penalties.reward > 0
+    var searched = len(reference) > 0 and len(query) > 0 and penalties.reward > 0
     if mode.end_bonus > 0 and not found.dropped and not searched:
         var reaching = aligned_within(reference, query, costs, mode.reaching_end(), band, Int.MAX, ties, eqx, limit)
         if aligned(reaching) and reaching.score + mode.end_bonus > found.score:
             return reaching^
-    var columns = reference.byte_length()
-    var rows = query.byte_length()
+    var columns = len(reference)
+    var rows = len(query)
     var cost = mode.match_score * found.matches - found.score
     if mode.anchor == Anchor.END:
         return Alignment(
@@ -1354,7 +1542,7 @@ def capped_distances(
             return
         try:
             out[unsafe_offset=index] = cost_within(
-                references[index], queries[index], costs, mode, band, max_cost, space
+                references[index].as_bytes(), queries[index].as_bytes(), costs, mode, band, max_cost, space
             )
         except:
             flags[unsafe_offset=index] = True
@@ -1363,7 +1551,9 @@ def capped_distances(
 
     for index in range(pairs):
         if failed[index]:
-            results[index] = cost_within(references[index], queries[index], costs, mode, band, max_cost)
+            results[index] = cost_within(
+                references[index].as_bytes(), queries[index].as_bytes(), costs, mode, band, max_cost
+            )
         if not results[index] and max_cost == Int.MAX:
             raise outside(band)
     return results^
@@ -1509,7 +1699,18 @@ def capped_alignments(
                 return
         try:
             out[unsafe_offset=index] = optional(
-                aligned_within(references[index], queries[index], costs, mode, band, max_cost, ties, eqx, limit, space)
+                aligned_within(
+                    references[index].as_bytes(),
+                    queries[index].as_bytes(),
+                    costs,
+                    mode,
+                    band,
+                    max_cost,
+                    ties,
+                    eqx,
+                    limit,
+                    space,
+                )
             )
         except:
             flags[unsafe_offset=index] = True
@@ -1519,7 +1720,17 @@ def capped_alignments(
     for index in range(pairs):
         if failed[index]:
             results[index] = optional(
-                aligned_within(references[index], queries[index], costs, mode, band, max_cost, ties, eqx, limit)
+                aligned_within(
+                    references[index].as_bytes(),
+                    queries[index].as_bytes(),
+                    costs,
+                    mode,
+                    band,
+                    max_cost,
+                    ties,
+                    eqx,
+                    limit,
+                )
             )
         if not results[index] and max_cost == Int.MAX:
             raise outside(band)

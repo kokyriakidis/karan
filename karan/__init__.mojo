@@ -53,6 +53,10 @@ var near = distances(references, queries, costs, max_cost=7)  # [None, None]: a 
 var aligner = Aligner()
 for index in range(len(references)):
     var each = aligner.align(references[index], queries[index], costs)  # as `align` gives it
+# Sequences held as bytes, as a FASTQ reader or a POA graph holds them, go in where they lie: every
+# single-pair call under `Costs` takes byte spans too, no `String` made of them, the same answer.
+var read: List[UInt8] = [65, 67, 71, 84, 65, 67]  # ACGTAC
+var from_bytes = aligner.align(Span(read), "ACGAC".as_bytes())  # cost 1, cigar "3=1D2="
 ```
 
 | mode | the reference | the query |

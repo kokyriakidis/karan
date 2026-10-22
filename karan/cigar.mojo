@@ -149,9 +149,9 @@ def cigar_counts(
     return counted
 
 
-def cigar_matches(first: String, second: String, cigar: String) -> Int:
+def cigar_matches(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], cigar: String) -> Int:
     """The equal pairs a CIGAR of `first` against `second` aligns (see `cigar_counts`)."""
-    return cigar_counts(first.as_bytes(), second.as_bytes(), cigar).matches
+    return cigar_counts(first, second, cigar).matches
 
 
 struct CigarWriter:

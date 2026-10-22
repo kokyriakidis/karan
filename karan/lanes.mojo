@@ -62,7 +62,7 @@ from .modes import Band, Costs, Mode
 
 
 trait Texts(ImplicitlyCopyable):
-    """A batch's sequences, each its bytes and their count: `List[String]`'s, or a C caller's."""
+    """A batch's sequences, each its bytes and their count: `List[String]`'s, one span's, or a C caller's."""
 
     def length(self, index: Int) -> Int:
         """Sequence `index`'s bytes."""
@@ -92,6 +92,28 @@ struct StringTexts(Texts, TrivialRegisterPassable):
     @always_inline
     def letters(self, index: Int) -> ImmPointer[UInt8, ImmUntrackedOrigin]:
         return self.items[unsafe_offset=index].unsafe_ptr().unsafe_origin_cast[ImmUntrackedOrigin]()
+
+
+@fieldwise_init
+struct SpanTexts(Texts, TrivialRegisterPassable):
+    """One sequence's bytes as a batch of it alone, a single pair the lanes take (see `api.distance_in_lanes`),
+    read where they lie rather than copied into a `List[String]`."""
+
+    var bytes: ImmPointer[UInt8, ImmUntrackedOrigin]
+    var count: Int
+
+    @staticmethod
+    def of(bytes: ImmSpan[UInt8, _]) -> Self:
+        """`bytes`, which must outlive the texts."""
+        return Self(bytes.unsafe_ptr().unsafe_origin_cast[ImmUntrackedOrigin](), len(bytes))
+
+    @always_inline
+    def length(self, index: Int) -> Int:
+        return self.count
+
+    @always_inline
+    def letters(self, index: Int) -> ImmPointer[UInt8, ImmUntrackedOrigin]:
+        return self.bytes
 
 
 @always_inline

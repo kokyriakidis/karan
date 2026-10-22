@@ -46,6 +46,10 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   work itself. An `Aligner`, one a thread, keeps its searches' memory from call to call; in C,
   `karan_aligner_new`, and in C++ and Python, `Aligner`. The command line spreads its pairs over
   every thread itself.
+- The single-pair calls under `Costs`, `distance`, `align`, `score`, `local_scores` and `Aligner`'s, take
+  the two sequences as byte spans (`Span[UInt8]`, of a `List[UInt8]` or any buffer) as well as `String`s,
+  read where they lie down to the searches, the same costs and CIGARs: a caller holding bytes, as a POA
+  graph does, makes no `String` a call.
 - What a SAM record holds: soft- or hard-clipped CIGARs, `NM`, `MD`, identity
   (`Alignment.clipped_cigar`, `edit_distance`, `mismatch_string`, `identity`), and SSW's second-best
   local score for a mapping quality (`local_scores`).

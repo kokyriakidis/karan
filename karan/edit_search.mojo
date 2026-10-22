@@ -11,7 +11,7 @@ distance from the pattern to any substring of the text, and an alignment there.
 from std.math import ceildiv
 
 from .band import check_margin, checkpoints_passed
-from .cigar import reversed_text, text_of
+from .cigar import reversed_list
 from .bit_parallel import ALL_ONES, BAND_COLUMNS, Frontier, Profile, WORD_BITS, word_value
 from .diagonal import PROBE_MARGIN
 from .errors import AlignmentError
@@ -217,7 +217,7 @@ def banded_last_row[free_start: Bool](mut profile: Profile, bound: Int, latest: 
 
 
 def edit_search(
-    pattern: String, text: String, prefix: Bool = False, ties: Ties = Ties.LEFT
+    pattern: ImmSpan[UInt8, _], text: ImmSpan[UInt8, _], prefix: Bool = False, ties: Ties = Ties.LEFT
 ) raises AlignmentError -> EditHit:
     """Where `pattern` best matches inside `text` at unit costs, Edlib's infix mode (HW), or with
     `prefix` where it best matches a prefix of the text, its prefix mode (SHW): the least edit distance
@@ -231,14 +231,15 @@ def edit_search(
     `len(pattern) / 64` words as the bound reaches, so this suits a read against a window of reference
     rather than a genome.
     """
-    var length = text.byte_length()
+    var length = len(text)
     if ties == Ties.RIGHT and not prefix:
         # The first start: the last end of both reversed, then the first end from that start.
-        var backward = Profile(reversed_text(text.as_bytes()[0:length]), reversed_text(pattern.as_bytes()))
+        var text_back = reversed_list(text)
+        var pattern_back = reversed_list(pattern)
+        var backward = Profile(Span(text_back), Span(pattern_back))
         var found = last_row_scores[True](backward, True)
         var start = length - found[1]
-        var tail = text_of(text.as_bytes()[start:])
-        var forward = Profile(tail, pattern)
+        var forward = Profile(text[start:], pattern)
         var end_found = last_row_scores[False](forward, first_bound=found[0])
         return EditHit(found[0], start, start + end_found[1])
     var forward = Profile(text, pattern)
@@ -248,6 +249,8 @@ def edit_search(
         return EditHit(found[0], 0, found[1])
     var found = last_row_scores[True](forward, True)
     var end = found[1]
-    var backward = Profile(reversed_text(text.as_bytes()[0:end]), reversed_text(pattern.as_bytes()))
+    var text_back = reversed_list(text[0:end])
+    var pattern_back = reversed_list(pattern)
+    var backward = Profile(Span(text_back), Span(pattern_back))
     var start_found = last_row_scores[False](backward, first_bound=found[0])
     return EditHit(found[0], end - start_found[1], end)

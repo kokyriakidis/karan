@@ -207,7 +207,7 @@ def distance_code(
         var first = sequence(reference, reference_length)
         var second = sequence(query, query_length)
         var cap = asked.max_cost if asked.max_cost >= 0 else Int.MAX
-        var found = cost_within(first, second, costs, mode, asked.band, cap, space)
+        var found = cost_within(first.as_bytes(), second.as_bytes(), costs, mode, asked.band, cap, space)
         if not found:
             # Under a cap, even `INT64_MAX`, a band no alignment fits also leaves nothing within it.
             return ABOVE_MAX if asked.max_cost >= 0 else OUTSIDE_BAND
@@ -241,8 +241,8 @@ def align_into(
         var second = sequence(query, query_length)
         # As `align` finds it, with or without the cap.
         var found = aligned_within(
-            first,
-            second,
+            first.as_bytes(),
+            second.as_bytes(),
             costs,
             mode,
             asked.band,

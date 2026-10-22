@@ -115,13 +115,15 @@ struct EditSpace(Movable):
         self.tally = Tally()
 
 
-def edit_distance(first: String, second: String) raises AlignmentError -> Int:
+def edit_distance(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _]) raises AlignmentError -> Int:
     """The global edit distance between two sequences (see the overload taking an `EditSpace`)."""
     var space = EditSpace()
     return edit_distance(first, second, space)
 
 
-def edit_distance(first: String, second: String, mut space: EditSpace) raises AlignmentError -> Int:
+def edit_distance(
+    first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], mut space: EditSpace
+) raises AlignmentError -> Int:
     """The global edit distance between two sequences, by bit-parallel sweep, through `space`'s memory.
 
     Built for DNA over `ACGT`. Up to four other bytes, `N` among them, are symbols of their own,
@@ -219,7 +221,9 @@ def projection(profile: Profile) -> Probe:
     return Probe(-1, projected.estimate, projected.floor)
 
 
-def forced_distance(first: String, second: String, mut space: EditSpace) raises AlignmentError -> Int:
+def forced_distance(
+    first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], mut space: EditSpace
+) raises AlignmentError -> Int:
     """The distance under a forced policy (see `probes.FORCE`): the whole matrix swept, or band doubling from
     one front's projection, the diagonal transition settling nothing."""
     space.profile.reset(first, second)
@@ -263,7 +267,11 @@ comptime EDGE_WORD_BYTES = 16
 
 
 def edit_cigar(
-    first: String, second: String, eqx: Bool = True, ties: Ties = Ties.LEFT, max_memory: Int = Int.MAX
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
+    eqx: Bool = True,
+    ties: Ties = Ties.LEFT,
+    max_memory: Int = Int.MAX,
 ) raises AlignmentError -> EditCigar:
     """The global edit distance between two sequences and an optimal alignment as a CIGAR string (see the
     overload taking an `EditSpace`)."""
@@ -272,8 +280,8 @@ def edit_cigar(
 
 
 def edit_cigar(
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     mut space: EditSpace,
     eqx: Bool = True,
     ties: Ties = Ties.LEFT,

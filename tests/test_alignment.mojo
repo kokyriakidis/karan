@@ -21,6 +21,7 @@ from karan import (
     Aligner,
     Alignment,
     AlignmentError,
+    LocalScores,
     Anchor,
     Band,
     Costs,
@@ -581,7 +582,7 @@ def test_bit_parallel_edit_distance_matches_the_full_matrix() raises:
         second = String(unsafe_from_utf8=bytes)
         assert_equal(distance(first, second), unit_distance(first, second))
     with assert_raises(contains="symbols"):
-        _ = bit_parallel_distance("ACGT", "ACGTNRYKM")
+        _ = bit_parallel_distance("ACGT".as_bytes(), "ACGTNRYKM".as_bytes())
     # Past what the sweep takes, the wavefront serves the pair at the same costs.
     assert_equal(distance("ACGT", "ACGTNRYKM"), 5)
 
@@ -596,8 +597,8 @@ def test_reversed_profile_codes() raises:
         for length in range(41):
             var first = random_sequence(length, length, alphabet)
             var second = random_sequence(max(length - 3, 0), length + 3, alphabet)
-            var forward = Profile(first, second)
-            var backward = Profile(first, second, True)
+            var forward = Profile(first.as_bytes(), second.as_bytes())
+            var backward = Profile(first.as_bytes(), second.as_bytes(), True)
             assert_equal(backward.extended, forward.extended)
             for column in range(length):
                 assert_equal(backward.column_codes[column], forward.column_codes[length - 1 - column])
@@ -1425,7 +1426,9 @@ def test_affine_ends_free_matches_the_full_matrix() raises:
                 )
             for limit in [0, 64]:
                 var split = (
-                    free_ends_alignment[1](first, second, penalties, True, Int.MAX, ends, Band(), Ties.LEFT, limit)
+                    free_ends_alignment[1](
+                        first.as_bytes(), second.as_bytes(), penalties, True, Int.MAX, ends, Band(), Ties.LEFT, limit
+                    )
                     .value()
                     .copy()
                 )
@@ -1743,7 +1746,9 @@ def test_two_piece_matches_the_full_matrix() raises:
                 )
             for limit in [0, 64]:
                 var split = (
-                    free_ends_alignment[2](first, second, penalties, True, Int.MAX, ends, Band(), Ties.LEFT, limit)
+                    free_ends_alignment[2](
+                        first.as_bytes(), second.as_bytes(), penalties, True, Int.MAX, ends, Band(), Ties.LEFT, limit
+                    )
                     .value()
                     .copy()
                 )
@@ -1866,9 +1871,9 @@ def test_affine_band_matches_the_full_matrix() raises:
                     )
             for limit in [0, 64]:
                 var split = free_ends_alignment[2](
-                    first, second, penalties, True, Int.MAX, ends, band, Ties.LEFT, limit
+                    first.as_bytes(), second.as_bytes(), penalties, True, Int.MAX, ends, band, Ties.LEFT, limit
                 ) if two else free_ends_alignment[1](
-                    first, second, penalties, True, Int.MAX, ends, band, Ties.LEFT, limit
+                    first.as_bytes(), second.as_bytes(), penalties, True, Int.MAX, ends, band, Ties.LEFT, limit
                 )
                 assert_equal(split.value().cost, expected)
                 ref piece = split.value()
@@ -2178,7 +2183,7 @@ def test_edit_ties_follow_a_fixed_rule() raises:
         var second = mutated(core, [0.01, 0.06, 0.15, 0.3][(trial // 3) % 4], [1, 3, 12][(trial // 12) % 3])
         if second.byte_length() == 0:
             second = "A"
-        var profile = Profile(first, second)
+        var profile = Profile(first.as_bytes(), second.as_bytes())
         var fronts = DiagonalFronts()
         var reference = diagonal_transition[StepCost(1 << 30, EDITS_PER_STEP)](profile, fronts)
         var right = align(first, second, ties=Ties.RIGHT)
@@ -2758,13 +2763,29 @@ def test_traced_extension_is_the_searched_one() raises:
                 continue
             var a = String(StringSlice(unsafe_from_utf8=head.as_bytes()[: found[1]]))
             var b = String(StringSlice(unsafe_from_utf8=lead.as_bytes()[: found[2]]))
-            var traced = traced_extension[2](a, b, penalties, True, found[0]) if two else traced_extension[1](
-                a, b, penalties, True, found[0]
-            )
+            var traced = traced_extension[2](
+                a.as_bytes(), b.as_bytes(), penalties, True, found[0]
+            ) if two else traced_extension[1](a.as_bytes(), b.as_bytes(), penalties, True, found[0])
+            var a_back = reversed_text(a)
+            var b_back = reversed_text(b)
             var searched = extension_of[2](
-                reversed_text(a), reversed_text(b), penalties, True, Anchor.START, Band(), Ties.RIGHT, found[0]
+                a_back.as_bytes(),
+                b_back.as_bytes(),
+                penalties,
+                True,
+                Anchor.START,
+                Band(),
+                Ties.RIGHT,
+                found[0],
             ) if two else extension_of[1](
-                reversed_text(a), reversed_text(b), penalties, True, Anchor.START, Band(), Ties.RIGHT, found[0]
+                a_back.as_bytes(),
+                b_back.as_bytes(),
+                penalties,
+                True,
+                Anchor.START,
+                Band(),
+                Ties.RIGHT,
+                found[0],
             )
             assert_equal(traced.value().score, found[0])
             assert_equal(searched.score, found[0])
@@ -3136,6 +3157,255 @@ def test_aligner_matches_the_functions() raises:
             aligner.distance(reference, query, costs, mode, max_cost=40).or_else(-1),
             distance(reference, query, costs, mode, max_cost=40).or_else(-1),
         )
+
+
+def described(alignment: Alignment) -> String:
+    """An alignment's every field, for comparing two calls' answers whole."""
+    return String(
+        alignment.cost,
+        " ",
+        alignment.score,
+        " ",
+        alignment.cigar,
+        " ",
+        alignment.reference_start,
+        "..",
+        alignment.reference_end,
+        " ",
+        alignment.query_start,
+        "..",
+        alignment.query_end,
+    )
+
+
+def described(found: Optional[Alignment]) -> String:
+    """A capped alignment's every field, or `none`."""
+    if not found:
+        return "none"
+    return described(found.value())
+
+
+def described(found: LocalScores) -> String:
+    """A local alignment's scores and ends."""
+    return String(
+        found.score,
+        " ",
+        found.reference_end,
+        " ",
+        found.query_end,
+        " ",
+        found.second_score,
+        " ",
+        found.second_reference_end,
+    )
+
+
+def text_answers(
+    reference: String, query: String, costs: Costs, mode: Mode, variant: Int, mut aligner: Aligner
+) -> String:
+    """Every single-pair call's answer, or the error it raised, each taking the pair as `String`s: the
+    band, the tie rule, `eqx` and the memory varied with `variant`."""
+    var band = Band.around(30) if variant % 2 else Band()
+    var ties = Ties.RIGHT if variant % 3 == 0 else Ties.LEFT
+    var eqx = variant % 4 != 1
+    var memory = 20000 if variant % 5 == 0 else DEFAULT_MAX_MEMORY
+    var out = String()
+    try:
+        out += described(align(reference, query, costs, mode, band=band, ties=ties, eqx=eqx, max_memory=memory))
+    except error:
+        out += String("raised ", error)
+    try:
+        out += "; " + described(
+            align(reference, query, costs, mode, max_cost=40, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", distance(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", distance(reference, query, costs, mode, max_cost=40, band=band).or_else(-1))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(
+            aligner.align(reference, query, costs, mode, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(
+            aligner.align(reference, query, costs, mode, max_cost=40, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", aligner.distance(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", aligner.distance(reference, query, costs, mode, max_cost=40, band=band).or_else(-1))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", score(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(local_scores(reference, query, costs, mode))
+    except error:
+        out += String("; raised ", error)
+    return out^
+
+
+def byte_answers(
+    reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _], costs: Costs, mode: Mode, variant: Int, mut aligner: Aligner
+) -> String:
+    """`text_answers`, each call taking the pair as byte spans."""
+    var band = Band.around(30) if variant % 2 else Band()
+    var ties = Ties.RIGHT if variant % 3 == 0 else Ties.LEFT
+    var eqx = variant % 4 != 1
+    var memory = 20000 if variant % 5 == 0 else DEFAULT_MAX_MEMORY
+    var out = String()
+    try:
+        out += described(align(reference, query, costs, mode, band=band, ties=ties, eqx=eqx, max_memory=memory))
+    except error:
+        out += String("raised ", error)
+    try:
+        out += "; " + described(
+            align(reference, query, costs, mode, max_cost=40, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", distance(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", distance(reference, query, costs, mode, max_cost=40, band=band).or_else(-1))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(
+            aligner.align(reference, query, costs, mode, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(
+            aligner.align(reference, query, costs, mode, max_cost=40, band=band, ties=ties, eqx=eqx, max_memory=memory)
+        )
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", aligner.distance(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", aligner.distance(reference, query, costs, mode, max_cost=40, band=band).or_else(-1))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += String("; ", score(reference, query, costs, mode, band=band))
+    except error:
+        out += String("; raised ", error)
+    try:
+        out += "; " + described(local_scores(reference, query, costs, mode))
+    except error:
+        out += String("; raised ", error)
+    return out^
+
+
+def test_byte_spans_answer_as_strings_do() raises:
+    """Every single-pair call given the pair as byte spans, each a stretch inside a longer buffer of other
+    letters, answers as the same call given `String`s does, field for field and error for error: unit,
+    linear, affine and two-piece costs; global, infix, prefix, suffix, free ends, both extensions, local,
+    overlap and a rewarded infix; with and without a band and a cap, either tie rule, `eqx` both ways and
+    memory tight enough to split; pairs from empty to a few thousand letters, close and unrelated, some
+    with an `N`, which the bit-parallel sweep codes as a symbol of its own."""
+    seed(67)
+    var aligner = Aligner()
+    var all_costs: List[Costs] = [
+        Costs.edit(),
+        Costs.linear(2, 3),
+        Costs.affine(4, 6, 2),
+        Costs.two_piece(4, 6, 2, 24, 1),
+    ]
+    var modes: List[Mode] = [
+        Mode.GLOBAL,
+        Mode.INFIX,
+        Mode.PREFIX,
+        Mode.SUFFIX,
+        Mode.ends_free(reference_start=5, query_end=3),
+        Mode.extension(1),
+        Mode.extension(1, Anchor.END, end_bonus=5),
+        Mode.local(2),
+        Mode.overlap(2),
+        Mode.INFIX.with_match_score(2),
+    ]
+    var aligned = List[Bool](length=len(modes), fill=False)
+    var variant = 0
+    for trial in range(40):
+        var reference = random_sequence(0, [12, 150, 600, 60, 2000][trial % 5], DNA_ALPHABET)
+        var query = mutated(reference, [0.0, 0.03, 0.15][trial % 3], 8) if trial % 6 else random_sequence(
+            0, 200, DNA_ALPHABET
+        )
+        if trial % 8 == 3:
+            query += "N"
+        # Each sequence's bytes inside a buffer of other letters, so a search reading past either end of
+        # its span would find them.
+        var before = random_sequence(1, 40, DNA_ALPHABET)
+        var after = random_sequence(1, 40, DNA_ALPHABET)
+        var buffer = List[UInt8]()
+        for byte in before.as_bytes():
+            buffer.append(byte)
+        for byte in reference.as_bytes():
+            buffer.append(byte)
+        for byte in query.as_bytes():
+            buffer.append(byte)
+        for byte in after.as_bytes():
+            buffer.append(byte)
+        var start = before.byte_length()
+        var middle = start + reference.byte_length()
+        var bytes = Span(buffer)
+        var reference_bytes = bytes[start:middle]
+        var query_bytes = bytes[middle : middle + query.byte_length()]
+        for costs in all_costs:
+            for index in range(len(modes)):
+                var expected = text_answers(reference, query, costs, modes[index], variant, aligner)
+                var found = byte_answers(reference_bytes, query_bytes, costs, modes[index], variant, aligner)
+                assert_equal(found, expected, String("trial ", trial, ", mode ", index))
+                if not expected.startswith("raised"):
+                    aligned[index] = True
+                variant += 1
+    for index in range(len(modes)):
+        assert_true(aligned[index], String("no pair aligned in mode ", index))
+
+
+def bytes_of(text: String) -> List[UInt8]:
+    """`text`'s bytes in a list of their own, as a caller reading sequences holds them."""
+    var out = List[UInt8](capacity=text.byte_length())
+    for byte in text.as_bytes():
+        out.append(byte)
+    return out^
+
+
+def test_byte_lists_align_as_strings_do() raises:
+    """A caller's `List[UInt8]`s given straight to the single-pair calls, as spans of themselves, align as
+    their text does: the overloads taking bytes need no `String` made of them."""
+    var reference = bytes_of("ACGTACGTTTGCA")
+    var query = bytes_of("ACGTCGTTTTGCA")
+    assert_equal(distance(Span(reference), Span(query)), 2)
+    assert_equal(align(Span(reference), Span(query)).cigar, "4=1D2=1I6=")
+    var costs = Costs.affine(4, 6, 2)
+    assert_equal(align(Span(reference), Span(query), costs).cigar, "4=3X6=")
+    var aligner = Aligner()
+    assert_equal(aligner.align(Span(reference), Span(query), costs).cost, 12)
+    assert_equal(aligner.distance(Span(reference), Span(query), costs, max_cost=10).or_else(-1), -1)
+    var empty = List[UInt8]()
+    assert_equal(distance(Span(empty), Span(query)), 13)
+    assert_equal(align(Span(reference), Span(empty), costs).cigar, "13D")
 
 
 def test_lane_tables_match_single_pairs() raises:
@@ -3820,7 +4090,7 @@ def test_device_matches_host() raises:
 def assert_lower_bound(first: String, second: String, inexact: Bool) raises:
     """The seed heuristic of `first` against `second` at most the true cost to the end at every cell, the
     suffixes' edit distance, filled a row at a time from the last."""
-    var heuristic = SeedHeuristic(Profile(first, second), inexact=inexact)
+    var heuristic = SeedHeuristic(Profile(first.as_bytes(), second.as_bytes()), inexact=inexact)
     var columns = first.byte_length()
     var rows = second.byte_length()
     var a = first.as_bytes()
@@ -3849,7 +4119,7 @@ def test_inexact_seeds_never_overestimate() raises:
     one edit of excess: left out, with the neighbour that stood in for it pruned, it read 61 at the
     origin of a pair whose distance is 60, and over the cost on optimal paths of 5 pairs in 400."""
     var text = String("TGTCGAGAAGCTCCTGAGCGCCTGTTCCGTGGTCGCCGAGTAGCCGCCTCAGGGGAATCGCGGCTGGC")
-    var crafted = SeedHeuristic(Profile(text, text), inexact=True)
+    var crafted = SeedHeuristic(Profile(text.as_bytes(), text.as_bytes()), inexact=True)
     assert_equal(crafted.h(48, 47), 1)
     assert_lower_bound(text, text, True)
     # The shortest pair of 4,000 drawn of 150 to 400 bases on which the heuristic read over the cost on an
@@ -3955,10 +4225,10 @@ def test_searches_refuse_what_they_cannot_honour() raises:
     assert_equal(len(search(references, "ACGTACGTACGT", best=0)), 0)
     with assert_raises(contains="no cost cap"):
         _ = search(references, "ACGTACGTACGT", Costs.affine(4, 6, 2), Mode.local(2), max_cost=0)
-    var empty = edit_search("", "ACGT")
+    var empty = edit_search("".as_bytes(), "ACGT".as_bytes())
     assert_equal(empty.distance, 0)
     assert_equal(empty.end, 4)
-    assert_equal(edit_search("ACG", "").distance, 3)
+    assert_equal(edit_search("ACG".as_bytes(), "".as_bytes()).distance, 3)
 
 
 def test_device_symbols_stay_in_their_tables() raises:

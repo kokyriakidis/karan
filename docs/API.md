@@ -54,6 +54,10 @@ var near = distances(references, queries, costs, max_cost=7)  # [None, None]: a 
 var aligner = Aligner()
 for index in range(len(references)):
     var each = aligner.align(references[index], queries[index], costs)  # as `align` gives it
+# Sequences held as bytes, as a FASTQ reader or a POA graph holds them, go in where they lie: every
+# single-pair call under `Costs` takes byte spans too, no `String` made of them, the same answer.
+var read: List[UInt8] = [65, 67, 71, 84, 65, 67]  # ACGTAC
+var from_bytes = aligner.align(Span(read), "ACGAC".as_bytes())  # cost 1, cigar "3=1D2="
 ```
 
 | mode | the reference | the query |
@@ -114,10 +118,22 @@ piece. At unit costs the bit-parallel band keeps its tiles' edges for the traceb
 alignment byte for byte (see `band.retrace`). The sweeps keep a few rows whatever the cap.
 
 ```mojo
+def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+```
+
+`align` over the two sequences' bytes where they lie, no `String` made of them (see `distance`): the same alignment, the CIGAR its `ties` picks byte for byte.
+
+```mojo
 def align(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align`, or None when the cost would pass `max_cost` or no alignment fits `band`, found as `distance` finds that, with no fronts traced. A mode with a match score, which maximizes a score, takes no cap.
+
+```mojo
+def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+```
+
+`align` under a cap, over the two sequences' bytes.
 
 ```mojo
 def align(reference: String, query: String, scoring: Scoring, mode: Mode = Mode.GLOBAL, *, placement: Optional[Placement] = None, max_memory: Int = Int(83886080), eqx: Bool = True) -> Alignment
@@ -158,10 +174,22 @@ it could cross, raise the guess until the answer fits under it. Other costs take
 both ends, keeping only a few costs' fronts, so a few rows of memory however long the pair.
 
 ```mojo
+def distance(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band()) -> Int
+```
+
+`distance` over the two sequences' bytes where they lie, a `List[UInt8]`'s or any buffer's, no `String` made of them: the same cost. Each single-pair call under `Costs` has such an overload, and every search beneath it reads the bytes alone, so the `String` overloads pass theirs down.
+
+```mojo
 def distance(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band()) -> Optional[Int]
 ```
 
 `distance`, or None when it would pass `max_cost` or no alignment fits `band`: the searches stop once each has grown to about half of `max_cost` without the two meeting within it, so a pair far over costs a fraction of its full search.
+
+```mojo
+def distance(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band()) -> Optional[Int]
+```
+
+`distance` under a cap, over the two sequences' bytes.
 
 ### `distances`
 
@@ -193,6 +221,12 @@ def local_scores(reference: String, query: String, costs: Costs, mode: Mode, *, 
 
 A local alignment's best score and where it ends, with the best score of an alignment ending more than `window` reference letters away, as SSW's `score2` and `ref_end2` report it for a mapping quality (see `LocalScores`): one sweep, with no alignment traced. The window is half the query, and at least 15, by default, as SSW suggests.
 
+```mojo
+def local_scores(reference: Span[UInt8], query: Span[UInt8], costs: Costs, mode: Mode, *, window: Optional[Int] = None) -> LocalScores
+```
+
+`local_scores` over the two sequences' bytes, no `String` made of them.
+
 ### `score`
 
 ```mojo
@@ -200,6 +234,12 @@ def score(reference: String, query: String, costs: Costs, mode: Mode = Mode.GLOB
 ```
 
 The best score `align` would return, with no alignment traced: for a mode with a match score its matches' reward less its costs, else minus the least cost, `distance`'s. A local alignment or free ends with a reward take the sweep alone, an extension its search alone, and a global alignment with a reward the wavefront's cost with the reward folded in, so each skips the traceback.
+
+```mojo
+def score(reference: Span[UInt8], query: Span[UInt8], costs: Costs, mode: Mode = Mode.GLOBAL, *, band: Band = Band()) -> Int
+```
+
+`score` over the two sequences' bytes, no `String` made of them.
 
 ```mojo
 def score(reference: String, query: String, scoring: Scoring, mode: Mode = Mode.GLOBAL, *, placement: Optional[Placement] = None) -> Int
@@ -267,10 +307,22 @@ def distance(mut self, reference: String, query: String, costs: Costs = Costs.ed
 `distance`, through this aligner's memory.
 
 ```mojo
+def distance(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band()) -> Int
+```
+
+`distance` over the two sequences' bytes, through this aligner's memory.
+
+```mojo
 def distance(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band()) -> Optional[Int]
 ```
 
 `distance` under a cap, through this aligner's memory.
+
+```mojo
+def distance(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band()) -> Optional[Int]
+```
+
+`distance` under a cap over the two sequences' bytes, through this aligner's memory.
 
 #### `align`
 
@@ -281,10 +333,22 @@ def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(
 `align`, through this aligner's memory: the same alignment, the CIGAR its `ties` picks.
 
 ```mojo
+def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+```
+
+`align` over the two sequences' bytes, through this aligner's memory: a caller holding its sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call.
+
+```mojo
 def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align` under a cap, through this aligner's memory.
+
+```mojo
+def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+```
+
+`align` under a cap over the two sequences' bytes, through this aligner's memory.
 
 ### `Device`
 

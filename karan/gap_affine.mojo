@@ -64,7 +64,7 @@ from std.math import gcd
 from std.sys import size_of
 
 from .common import FIRST_SENTINEL, SECOND_SENTINEL, UNREACHED
-from .cigar import reverse_bytes, reversed_into, reversed_list, text_of
+from .cigar import reverse_bytes, reversed_into, reversed_list
 from .bit_parallel import append_moves, DIAGONAL, LEFT, UP
 from .substitutions import uniform_pair
 from .edit_distance import EditSpace
@@ -2437,8 +2437,8 @@ def outside(band: Band) -> AlignmentError:
 def cigar_within[
     pieces: Int
 ](
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     penalties: Penalties,
     eqx: Bool,
     ceiling: Int,
@@ -2456,8 +2456,8 @@ def cigar_within[
 def cigar_within[
     pieces: Int
 ](
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     penalties: Penalties,
     eqx: Bool,
     ceiling: Int,
@@ -2471,14 +2471,14 @@ def cigar_within[
     # space's buffer, kept from pair to pair, which had been a list a pair, most of a short read's allocations.
     ref moves = space.moves
     moves.clear()
-    moves.reserve(first.byte_length() + second.byte_length())
+    moves.reserve(len(first) + len(second))
     var cost: Int
     comptime if pieces == 1:
         cost = global_path[1](
             space.forward,
             space.backward,
-            first.as_bytes(),
-            second.as_bytes(),
+            first,
+            second,
             penalties,
             limit,
             moves,
@@ -2490,8 +2490,8 @@ def cigar_within[
         cost = global_path[2](
             space.forward2,
             space.backward2,
-            first.as_bytes(),
-            second.as_bytes(),
+            first,
+            second,
             penalties,
             limit,
             moves,
@@ -2501,9 +2501,7 @@ def cigar_within[
         )
     if cost < 0:
         return None
-    return AffineCigar(
-        cost * penalties.scale, cigar_of_moves(first.as_bytes(), second.as_bytes(), moves, cost, penalties, eqx)
-    )
+    return AffineCigar(cost * penalties.scale, cigar_of_moves(first, second, moves, cost, penalties, eqx))
 
 
 def global_path[
@@ -2739,8 +2737,8 @@ def edge_span(length: Int, along_first: Bool, ends_free: EndsFree, band: Band) -
 def free_ends_alignment[
     pieces: Int
 ](
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     penalties: Penalties,
     eqx: Bool,
     ceiling: Int,
@@ -2773,8 +2771,8 @@ def free_ends_alignment[
 ](
     mut forward: Optional[Wavefront[pieces]],
     mut backward: Optional[Wavefront[pieces]],
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     penalties: Penalties,
     eqx: Bool,
     ceiling: Int,
@@ -2785,8 +2783,8 @@ def free_ends_alignment[
 ) -> Optional[Spanned]:
     """`free_ends_alignment` through the searches given, built the first time and begun afresh after,
     as a batch's worker keeps them (see `SearchSpace`)."""
-    var a = first.as_bytes()
-    var b = second.as_bytes()
+    var a = first
+    var b = second
     var columns = len(a)
     var rows = len(b)
     # The rule runs left to right for `Ties.RIGHT`: its own frame is both sequences reversed, its
@@ -2881,11 +2879,9 @@ def free_ends_alignment[
     )
     if cost < 0 or cost > ceiling:
         return None
-    var part = text_of(a[start_column:end_column])
-    var piece = text_of(b[start_row:end_row])
     return Spanned(
         cost * penalties.scale,
-        cigar_of(part, piece, moves^, cost, penalties, eqx),
+        cigar_of(a[start_column:end_column], b[start_row:end_row], moves^, cost, penalties, eqx),
         start_column,
         end_column,
         start_row,
@@ -3077,9 +3073,14 @@ def matches_along(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], moves: Li
 
 def traced_extension[
     pieces: Int
-](first: String, second: String, penalties: Penalties, eqx: Bool, known: Int, limit: Int = HISTORY_LIMIT) -> Optional[
-    AffineExtension
-]:
+](
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
+    penalties: Penalties,
+    eqx: Bool,
+    known: Int,
+    limit: Int = HISTORY_LIMIT,
+) -> Optional[AffineExtension]:
     """The best extension fixed at both sequences' ends, as `extend` finds it searching back from there
     with a `known` best score, its fronts kept as it grows and traced back from where it stops, so
     no second search aligns the letters it covers. None when the kept fronts would pass half of
@@ -3088,8 +3089,8 @@ def traced_extension[
     The trace takes WFA2-lib's rule over the search's own sequences, both reversed, read backwards:
     the alignment `Ties.LEFT` names. The search stops at the first alignment earning `known`, the one
     `extend` keeps of several."""
-    var a = first.as_bytes()
-    var b = second.as_bytes()
+    var a = first
+    var b = second
     var columns = len(a)
     var rows = len(b)
     if columns == 0 or rows == 0 or penalties.reward == 0 or known <= 0:
@@ -3125,14 +3126,7 @@ def traced_extension[
     var covered_first = reversed_list(a[columns - best_column :])
     var covered_second = reversed_list(b[rows - best_row :])
     var matches = matches_along(Span(covered_first), Span(covered_second), moves)
-    var cigar = cigar_of(
-        String(unsafe_from_utf8=covered_first),
-        String(unsafe_from_utf8=covered_second),
-        moves^,
-        best_cost,
-        penalties,
-        eqx,
-    )
+    var cigar = cigar_of(Span(covered_first), Span(covered_second), moves^, best_cost, penalties, eqx)
     return AffineExtension(
         penalties.score(best_cost, best_column + best_row), best_column, best_row, matches, cigar^, False
     )
@@ -3141,8 +3135,8 @@ def traced_extension[
 def extension_of[
     pieces: Int
 ](
-    first: String,
-    second: String,
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
     penalties: Penalties,
     eqx: Bool,
     anchor: Anchor,
@@ -3165,8 +3159,8 @@ def extension_of[
     `Mode.extension`)."""
     if not band.holds(0):
         raise outside(band)
-    var a = first.as_bytes()
-    var b = second.as_bytes()
+    var a = first
+    var b = second
     var at_end = anchor == Anchor.END
     # From the start the rule's end is the latest of equally good ones; searched from the end, the
     # earliest, which mirrored is the latest start.
@@ -3203,13 +3197,11 @@ def extension_of[
     )
     # The moves run right to left; the matches among the aligned pairs give the cost from the score.
     var matches = matches_along(Span(covered_first), Span(covered_second), moves)
-    var piece_first = text_of(covered_first)
-    var piece_second = text_of(covered_second)
     return AffineExtension(
         penalties.score(cost, columns + rows),
         columns,
         rows,
         matches,
-        cigar_of(piece_first, piece_second, moves^, cost, penalties, eqx),
+        cigar_of(covered_first, covered_second, moves^, cost, penalties, eqx),
         found[3],
     )

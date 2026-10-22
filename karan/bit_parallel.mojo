@@ -802,7 +802,7 @@ def encoded_bases(
 
 
 def symbol_codes(
-    first: String, second: String, mut column_codes: List[UInt8], mut row_codes: List[UInt8]
+    first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], mut column_codes: List[UInt8], mut row_codes: List[UInt8]
 ) raises AlignmentError:
     """Recodes the bytes that are not bases, which the bases' codes read as one: each the next free
     code from four, in the order the bytes first appear; past four such symbols, three bits run out.
@@ -822,13 +822,13 @@ def symbol_codes(
 
 
 def recode_symbols(
-    text: String, mut codes: List[UInt8], mut table: List[Int16], mut next_code: Int
+    text: ImmSpan[UInt8, _], mut codes: List[UInt8], mut table: List[Int16], mut next_code: Int
 ) raises AlignmentError:
     """`symbol_codes` for one sequence, `table` and `next_code` carried from the one before."""
     comptime CHUNK = 16
     var bytes = text.unsafe_ptr()
     var out = codes.unsafe_ptr()
-    var length = text.byte_length()
+    var length = len(text)
     var index = 0
     while index < length:
         var size = min(CHUNK, length - index)
@@ -911,7 +911,9 @@ struct Profile(Movable):
     var row_codes: List[UInt8]
     """The second sequence as codes."""
 
-    def __init__(out self, first: String, second: String, reverse: Bool = False) raises AlignmentError:
+    def __init__(
+        out self, first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], reverse: Bool = False
+    ) raises AlignmentError:
         """Both sequences as codes: `A`, `C`, `G` and `T` zero to three, and up to four other bytes the
         codes four to seven, in the order they first appear, each matching only itself; with
         `reverse`, both back to front, the profile of the reversed pair."""
@@ -937,11 +939,13 @@ struct Profile(Movable):
         self.column_codes = List[UInt8]()
         self.row_codes = List[UInt8]()
 
-    def reset(mut self, first: String, second: String, reverse: Bool = False) raises AlignmentError:
+    def reset(
+        mut self, first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], reverse: Bool = False
+    ) raises AlignmentError:
         """As new for this pair, the memory the last pair's codes took kept: a batch's worker profiles
         each of its pairs in the same lists (see `edit_distance.EditSpace`)."""
-        self.columns = first.byte_length()
-        self.rows = second.byte_length()
+        self.columns = len(first)
+        self.rows = len(second)
         self.words = ceildiv(self.rows, WORD_BITS)
         # The planes wait for a band, which builds them anew (see `build_planes`).
         self.column_low.clear()
