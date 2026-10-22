@@ -3126,8 +3126,8 @@ def traced_extension[
     var covered_second = reversed_list(b[rows - best_row :])
     var matches = matches_along(Span(covered_first), Span(covered_second), moves)
     var cigar = cigar_of(
-        String(unsafe_from_utf8=covered_first^),
-        String(unsafe_from_utf8=covered_second^),
+        String(unsafe_from_utf8=covered_first),
+        String(unsafe_from_utf8=covered_second),
         moves^,
         best_cost,
         penalties,

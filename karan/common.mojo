@@ -9,7 +9,7 @@ from max.algorithm import parallelize
 from std.atomic import Atomic
 from std.ffi import c_int, c_size_t, external_call
 from std.memory import stack_allocation
-from std.sys.info import CompilationTarget, has_apple_gpu_accelerator, num_logical_cores, size_of
+from std.sys.info import CompilationTarget, num_logical_cores, size_of
 
 from max.gpu import WARP_SIZE
 from max.gpu.host import DeviceAttribute, DeviceBuffer, DeviceContext
@@ -174,7 +174,8 @@ struct GpuSpecs(ImplicitlyCopyable, TrivialRegisterPassable):
     var reserved_memory_per_block: Int
     """Of that, what no block may claim for itself."""
     var largest_allocation: Int
-    """The largest buffer the device allocates at once, in bytes."""
+    """The largest buffer the device allocates at once, in bytes: its total memory, the bound the driver no longer
+    reports apart."""
     var streaming_multiprocessors: Int
     var max_blocks_per_multiprocessor: Int
     """Blocks a multiprocessor runs at once."""
@@ -184,9 +185,9 @@ struct GpuSpecs(ImplicitlyCopyable, TrivialRegisterPassable):
         """The specs `context`'s GPU reports. Metal reports a block's shared memory alone, every block given
         the same, and not how many blocks run at once: a block's threads over a warp stand in for that,
         which only sets how finely a launch is cut."""
-        var largest = Int(context.max_single_alloc_size())
+        var largest = Int(context.get_memory_info()[1])
         var multiprocessors = Int(context.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT))
-        comptime if has_apple_gpu_accelerator():
+        if context.api() == "metal":
             var per_block = Int(context.get_attribute(DeviceAttribute.MAX_SHARED_MEMORY_PER_BLOCK))
             var resident = Int(context.get_attribute(DeviceAttribute.MAX_THREADS_PER_BLOCK)) // WARP_SIZE
             return Self(per_block, 0, largest, multiprocessors, resident)

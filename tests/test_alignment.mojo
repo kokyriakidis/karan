@@ -276,7 +276,7 @@ def unit_distance(first: String, second: String) raises -> Int:
                 letters.append(byte)
     if len(letters) == 0:
         letters.append(UInt8(ord("A")))
-    return -Int(score(first, second, Scoring.edit_distance(String(unsafe_from_utf8=letters^)), GLOBAL))
+    return -Int(score(first, second, Scoring.edit_distance(String(unsafe_from_utf8=letters)), GLOBAL))
 
 
 def edit_rows(first: String, second: String, ties: Ties = Ties.LEFT) raises -> GappedAlignment:

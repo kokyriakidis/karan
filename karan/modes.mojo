@@ -525,7 +525,7 @@ struct Alignment(Copyable, Movable, Writable):
                     bottom.append(second[row])
                     column += 1
                     row += 1
-        return (String(unsafe_from_utf8=top^), String(unsafe_from_utf8=bottom^))
+        return (String(unsafe_from_utf8=top), String(unsafe_from_utf8=bottom))
 
     def clipped_cigar(self, query_length: Int, *, hard: Bool = False) -> String:
         """The CIGAR as a SAM record writes it: the query's letters outside the span clipped, soft (`S`),

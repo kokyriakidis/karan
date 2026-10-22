@@ -1,6 +1,6 @@
 [workspace]
 authors = ["Konstantinos Kyriakidis <kkyriaki@ucsc.edu>"]
-channels = ["conda-forge", "https://conda.modular.com/max"]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
 description = "Exact pairwise sequence alignment in Mojo: edit distance after A*PA2, gap-affine and two-piece wavefront after BiWFA, local, semi-global and extension alignment, on CPU and GPU"
 license = "MPL-2.0"
 license-file = "LICENSE"
@@ -11,8 +11,10 @@ version = "0.1.0"
 
 # `max` carries `max.gpu` and `max.algorithm`, which the kernels import alongside the standard library.
 [dependencies]
-max = ">=26.6,<27"
-mojo = ">=1.1.0,<2"
+# Pinned to one nightly, the one sporos and plegma build with, so the three link into one program. Move it on purpose,
+# rebuild and test.
+max = "==26.7.0.dev2026102005"
+mojo = "==1.2.0.dev2026102005"
 
 [tasks]
 # `mojo build -o` writes into a directory but will not create one.

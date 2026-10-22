@@ -17,6 +17,9 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
 ## Working here
 
 - Build and test: `pixi run test`; format: `pixi run format` (120 columns).
+- Toolchain: one Mojo nightly with its `max`, pinned exactly in `pixi.toml` (1.2.0.dev2026102005), the one sporos and
+  plegma build with, so the three link into one program; plegma carries karan as a submodule. Move it on purpose: change
+  the pin, `pixi lock`, build and test. The paper's timings were taken with Mojo 1.1.0 and say so.
 - `pixi run test-wfa` holds every mode WFA2-lib also has to its regression set (scores and CIGARs).
 - `pixi run profile duel|rivals|regret|probes|peak|perf|modes|scaling|noise|compare|all` finds where time goes,
   what each engine choice cost and where a rival wins (see `benchmarks/README.md`, Profiling); probes compile
