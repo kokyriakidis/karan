@@ -49,9 +49,12 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   plegma's: the walk back from the end takes the diagonal at every tie, then a deletion, an insertion, the
   second gap piece's, so gaps come as early and substitutions as late as the cost allows), every edit left
   (`Ties.LEFT`), or every edit right, WFA2-lib's CIGAR byte for byte (`Ties.RIGHT`); with free ends the span
-  first (`LEFT`'s for `KSW2`), whichever search found the cost, under any band or cap. `KSW2` is written by
-  Gotoh's recurrence over the cells about the path a search found (`ksw_ties`), and over minimap2's scores as
-  costs gives `ksw_extd2`'s CIGAR exactly. The C options' `ties` (formerly `right_ties`), Python's and the
+  first (`LEFT`'s for `KSW2`), whichever search found the cost, under any band or cap. At unit costs the edit
+  engine walks `KSW2` itself through the fronts it searched (`ksw2_diagonal_into`), at no cost over `LEFT`; any
+  other search's CIGAR is written again by Gotoh's recurrence (`ksw_ties`), swept by anti-diagonal in sixteen
+  lanes over only the cells an alignment no costlier than the search's can pass (its cost so far and the letters
+  left at the cheaper extension), so the whole matrix's CIGAR for any pair; over minimap2's scores as costs it
+  gives `ksw_extd2`'s CIGAR exactly. The C options' `ties` (formerly `right_ties`), Python's and the
   command line's `ties` take it too.
 - Bands of diagonals, cost caps (`max_cost`), and batches (`distances`, `alignments`, `scores`),
   capped too, many pairs at once in the lanes of a SIMD register: costs and alignments, globally and

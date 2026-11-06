@@ -8,7 +8,7 @@ An optimal alignment from a band's recorded tile edges, retraced a tile at a tim
 WFA2-lib's rule for ties (see `TileTracer`), and written out as two gapped rows or as a CIGAR.
 """
 
-from std.bit import count_trailing_zeros
+from std.bit import count_leading_zeros, count_trailing_zeros
 from std.math import ceildiv, clamp
 from std.memory import bitcast
 
@@ -917,3 +917,76 @@ def reversed_diagonal_into(
         score -= 1
     if column > 0:
         writer.add(matched, column)
+
+
+@always_inline
+def matched_back(first: ImmPointer[UInt8, _], second: ImmPointer[UInt8, _], column: Int, row: Int) -> Int:
+    """How many matches end at `(column, row)`, running back along its diagonal, eight bases at a time while both
+    have eight."""
+    var at = column
+    var down = row
+    while at >= 8 and down >= 8:
+        var mismatches = (
+            first.unsafe_offset(at - 8).unsafe_bitcast[UInt64]().unsafe_load()
+            ^ second.unsafe_offset(down - 8).unsafe_bitcast[UInt64]().unsafe_load()
+        )
+        if mismatches != 0:
+            return column - at + Int(count_leading_zeros(mismatches)) // 8
+        at -= 8
+        down -= 8
+    while at > 0 and down > 0 and first[unsafe_offset=at - 1] == second[unsafe_offset=down - 1]:
+        at -= 1
+        down -= 1
+    return column - at
+
+
+def ksw2_diagonal_into(profile: Profile, fronts: DiagonalFronts, distance: Int, eqx: Bool, mut writer: CigarWriter):
+    """The CIGAR KSW2's rule (`Ties.KSW2`) picks, walked back from the corner through the pair's own `fronts`:
+    a match always back along its diagonal, as one never costs more than the cell it leads to; at a
+    mismatch, of the edits into it that are optimal, a substitution before a base of the first sequence
+    alone (`D`) before one of the second (`I`). Each test is a cell of one score less, read off that score's
+    front, which reaches every cell an optimal path passes, pruned or not (see `grow_to`), and no cell
+    costlier, so the walk is KSW2's over the whole matrix."""
+    var columns = profile.columns
+    var rows = profile.rows
+    var first = profile.column_codes.unsafe_ptr()
+    var second = profile.row_codes.unsafe_ptr()
+    var matched = UInt8(ord("=")) if eqx else UInt8(ord("M"))
+    var substituted = UInt8(ord("X")) if eqx else UInt8(ord("M"))
+    var letters = List[UInt8](capacity=2 * distance + 2)
+    var lengths = List[Int](capacity=2 * distance + 2)
+    var column = columns
+    var row = rows
+    var score = distance
+    while column > 0 and row > 0:
+        var run = matched_back(first, second, column, row)
+        if run > 0:
+            letters.append(matched)
+            lengths.append(run)
+            column -= run
+            row -= run
+            if column == 0 or row == 0:
+                break
+        var diagonal = column - row
+        if fronts.at(score - 1, diagonal) >= column - 1:
+            letters.append(substituted)
+            column -= 1
+            row -= 1
+        elif fronts.at(score - 1, diagonal - 1) >= column - 1:
+            letters.append(UInt8(ord("D")))
+            column -= 1
+        else:
+            letters.append(UInt8(ord("I")))
+            row -= 1
+        lengths.append(1)
+        score -= 1
+    if column > 0:
+        letters.append(UInt8(ord("D")))
+        lengths.append(column)
+    if row > 0:
+        letters.append(UInt8(ord("I")))
+        lengths.append(row)
+    var count = len(letters)
+    for index in range(count):
+        var at = count - 1 - index
+        writer.add(letters[at], lengths[at])

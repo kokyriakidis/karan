@@ -8,7 +8,7 @@ writes must be `ksw_extd2`'s, itself minimap2's C byte for byte (see `test_ksw2.
 from std.random import random_ui64, seed
 from std.testing import assert_equal, assert_true, TestSuite
 
-from karan import Costs, Mode, Ties, align
+from karan import Aligner, Band, Costs, Mode, Ties, align
 from karan.cigar import run_length, run_letter, runs_of
 from karan.ksw2 import KswBuffers, KswResult, ksw_extd2
 from karan.ksw_ties import TieBuffers, ksw_cigar
@@ -156,10 +156,55 @@ def test_api_ties_ksw2() raises:
     assert_equal(ext.cigar, "3=1D1X12=")
 
 
-def test_band_gives_the_whole_matrixs_alignment() raises:
-    """Searched about any path, widened as its walk nears the edge, KSW2's rule gives the alignment the whole
-    matrix gives: 1,200 random pairs with repeats, at unit, linear, affine and two-piece costs, deletions priced
-    apart too, guided by either of karan's other rules."""
+def test_edit_engine_walks_ksw2() raises:
+    """At unit costs the edit engine walks KSW2's rule itself, through its fronts or about a band's path: the
+    whole matrix's alignment, globally and in an infix's span, as text and as runs, for 900 pairs from identical
+    to unrelated, short to 1.5 kbp."""
+    seed(53)
+    var buf = TieBuffers()
+    var aligner = Aligner()
+    var letters = "ACGT".as_bytes()
+    for k in range(900):
+        var t: List[UInt8]
+        var q: List[UInt8]
+        if k % 9 == 8:
+            # Unrelated: the searches give up and a band settles it.
+            t = List[UInt8]()
+            q = List[UInt8]()
+            for _ in range(200 + _draw(1300)):
+                t.append(letters[_draw(4)])
+            for _ in range(200 + _draw(1300)):
+                q.append(letters[_draw(4)])
+        else:
+            var p = _piece(1 + _draw(1500), [0, 5, 20, 60, 150, 300, 450][_draw(7)])
+            t = p[0].copy()
+            q = p[1].copy()
+        var got = align(String(unsafe_from_utf8=t), String(unsafe_from_utf8=q), Costs.edit(), Mode.GLOBAL)
+        var g = runs_of(got.cigar)
+        var whole = _text(ksw_cigar(Span(t), Span(q), Costs.edit(), Span(g), buf, by_rows=True))
+        assert_equal(got.cigar, whole, String("pair ", k))
+        var as_runs = aligner.align(Span(t), Span(q), Costs.edit(), Mode.GLOBAL, runs=True)
+        assert_equal(_text(as_runs.runs), whole, String("runs, pair ", k))
+        if k % 5 == 0 and len(q) > 0:
+            var host = List[UInt8]()
+            for _ in range(_draw(50)):
+                host.append(letters[_draw(4)])
+            for c in t:
+                host.append(c)
+            for _ in range(_draw(50)):
+                host.append(letters[_draw(4)])
+            var infix = align(String(unsafe_from_utf8=host), String(unsafe_from_utf8=q), Costs.edit(), Mode.INFIX)
+            var span = Span(host)[infix.reference_start : infix.reference_end]
+            var gi = runs_of(infix.cigar)
+            var wi = _text(ksw_cigar(span, Span(q), Costs.edit(), Span(gi), buf, by_rows=True))
+            assert_equal(infix.cigar, wi, String("infix, pair ", k))
+
+
+def test_bounded_sweep_gives_the_whole_matrixs_alignment() raises:
+    """Swept only where an alignment no costlier than the guide can pass, KSW2's rule gives the alignment every
+    cell gives: 1,500 random pairs with repeats, from identical to unrelated, at unit, linear, affine and
+    two-piece costs, deletions priced apart too, guided by either of karan's other rules or, a looser bound, by
+    the guide's gaps placed apart."""
     seed(29)
     var models = List[Costs]()
     models.append(Costs.edit())
@@ -169,8 +214,8 @@ def test_band_gives_the_whole_matrixs_alignment() raises:
     models.append(Costs.two_piece(12, 8, 6, 48, 4))
     models.append(Costs.affine(4, 6, 2).with_deletions(5, 1))
     var buf = TieBuffers()
-    for k in range(1200):
-        var p = _piece(1 + _draw(400), [0, 20, 60, 150, 300][_draw(5)])
+    for k in range(1500):
+        var p = _piece(1 + _draw(700), [0, 20, 60, 150, 300, 450, 700][_draw(7)])
         var t = p[0].copy()
         var q = p[1].copy()
         var costs = models[k % len(models)]
@@ -182,14 +227,53 @@ def test_band_gives_the_whole_matrixs_alignment() raises:
             ties=Ties.RIGHT if k % 2 == 0 else Ties.LEFT,
         )
         var g = runs_of(guide.cigar)
-        var banded = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf))
-        var whole = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=max(len(t), len(q))))
-        assert_equal(banded, whole, String("pair ", k, " costs model ", k % len(models)))
+        if k % 7 == 6:
+            # A costlier guide: every reference letter deleted, then every query letter inserted.
+            g = List[UInt64]()
+            if len(t) > 0:
+                g.append((UInt64(len(t)) << 8) | UInt64(ord("D")))
+            if len(q) > 0:
+                g.append((UInt64(len(q)) << 8) | UInt64(ord("I")))
+        var bounded = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf))
+        var whole = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, by_rows=True))
+        assert_equal(bounded, whole, String("pair ", k, " costs model ", k % len(models)))
+
+
+def test_gaps_along_the_edges() raises:
+    """Alignments whose least cost runs one gap along the matrix's first row or column, then on into it, or ends
+    in one: the bound counts the letters left at an extension alone, so none is cut; at every cost model."""
+    var models = List[Costs]()
+    models.append(Costs.edit())
+    models.append(Costs.linear(3, 2))
+    models.append(Costs.affine(4, 6, 2))
+    models.append(Costs.two_piece(4, 4, 2, 24, 1))
+    models.append(Costs.two_piece(12, 8, 6, 48, 4))
+    models.append(Costs.affine(4, 6, 2).with_deletions(5, 1))
+    var pairs = [
+        ("A", "CCCCCA"),
+        ("CCCCCA", "A"),
+        ("ACGT", "TTTTTTTTTTTTTTTTACGT"),
+        ("TTTTTTTTTTTTTTTTACGT", "ACGT"),
+        ("ACGTTTTTTTTTTTTTTTTT", "ACG"),
+        ("ACG", "ACGTTTTTTTTTTTTTTTTT"),
+        ("GATTACAGATTACA", "CCCCCCCCCCCCCCCCCCCCCCCCGATTACAGATTACAGGGGGGGGGGGGGGGGGGGG"),
+    ]
+    var buf = TieBuffers()
+    for p in pairs:
+        var t = List[UInt8](p[0].as_bytes())
+        var q = List[UInt8](p[1].as_bytes())
+        for mi in range(len(models)):
+            var costs = models[mi]
+            var g = runs_of(align(p[0], p[1], costs, Mode.GLOBAL, ties=Ties.LEFT).cigar)
+            var bounded = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf))
+            var whole = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, by_rows=True))
+            assert_equal(bounded, whole, String(p[0], " ", p[1], " model ", mi))
 
 
 def test_anti_diagonals_match_rows() raises:
-    """The vectorized sweep by anti-diagonal and the row sweep it replaces write the same CIGAR: 1,500 random
-    pairs at every cost model, narrow and wide bands, guided by either other rule."""
+    """Inside a caller's diagonals the bounded sweep by anti-diagonal and the row sweep of every cell write the
+    same CIGAR: 1,500 random pairs at every cost model, the diagonals narrow, wide or none, guided by either other
+    rule; diagonals no alignment fits give the guide back from both."""
     seed(41)
     var models = List[Costs]()
     models.append(Costs.edit())
@@ -204,18 +288,25 @@ def test_anti_diagonals_match_rows() raises:
         var t = p[0].copy()
         var q = p[1].copy()
         var costs = models[k % len(models)]
+        var low = -(1 << 40)
+        var high = 1 << 40
+        var reach = [-1, 3, 10, 40][k % 4]
+        var shift = len(t) - len(q)
+        if reach >= 0:
+            low = min(0, shift) - reach
+            high = max(0, shift) + reach
         var guide = align(
             String(unsafe_from_utf8=t),
             String(unsafe_from_utf8=q),
             costs,
             Mode.GLOBAL,
+            band=Band(low, high) if reach >= 0 else Band(),
             ties=Ties.RIGHT if k % 2 == 0 else Ties.LEFT,
         )
         var g = runs_of(guide.cigar)
-        var width = [1, 4, 32, 1000][k % 4]
-        var rows = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=width, by_rows=True))
-        var diagonals = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=width))
-        assert_equal(diagonals, rows, String("pair ", k, " model ", k % len(models), " width ", width))
+        var rows = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, low, high, by_rows=True))
+        var diagonals = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, low, high))
+        assert_equal(diagonals, rows, String("pair ", k, " model ", k % len(models), " reach ", reach))
 
 
 def main() raises:

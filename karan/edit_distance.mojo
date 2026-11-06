@@ -40,7 +40,8 @@ from .diagonal import (
     two_ended_setup,
 )
 from .errors import AlignmentError
-from .modes import Ties
+from .ksw_ties import ksw_cigar, TieBuffers
+from .modes import Costs, Ties
 from .probes import (
     BAND_NS,
     CIGAR_NS,
@@ -80,7 +81,15 @@ from .probes import (
 )
 from .seeds import SeedHeuristic
 from .cigar import CigarWriter
-from .traceback import cigar_capacity, cigar_into, cigar_string, diagonal_cigar, diagonal_into, EditPath
+from .traceback import (
+    cigar_capacity,
+    cigar_into,
+    cigar_string,
+    diagonal_cigar,
+    diagonal_into,
+    EditPath,
+    ksw2_diagonal_into,
+)
 
 
 struct EditSpace(Movable):
@@ -102,6 +111,8 @@ struct EditSpace(Movable):
     """Its search from the end."""
     var tally: Tally
     """The last pair's probes, in a build with them (see `probes`)."""
+    var ties: TieBuffers
+    """KSW2's walk over a band's path (see `edit_cigar`)."""
 
     def __init__(out self):
         """Nothing profiled yet: the first pair does."""
@@ -114,6 +125,7 @@ struct EditSpace(Movable):
         self.traced_ahead = FrontPair(record=True)
         self.traced_behind = FrontPair(record=True)
         self.tally = Tally()
+        self.ties = TieBuffers()
 
 
 def edit_distance(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _]) raises AlignmentError -> Int:
@@ -301,7 +313,8 @@ def edit_cigar(
 
     Of several optimal alignments the CIGAR is always the one `ties` names, as for the gap-affine
     alignment (see `Ties`): by default every edit as far left as it goes, indels placed as minimap2
-    places them, or with `Ties.RIGHT` as far right, WFA2-lib's edit CIGAR byte for byte; whichever of
+    places them, with `Ties.RIGHT` as far right, WFA2-lib's edit CIGAR byte for byte, or with `Ties.KSW2`
+    KSW2's (see `ksw2_diagonal_into`); whichever of
     the searches below found the distance. A distance diagonal transition found has its CIGAR written
     straight from the fronts, a run at a time (see `diagonal_cigar`).
 
@@ -311,8 +324,9 @@ def edit_cigar(
     keeps it. With `runs`, the CIGAR comes as its runs' numbers (`EditCigar.runs`), no text written or read
     back."""
     # The search's rule places every edit as far right as it goes; over the reversed pair that is as far
-    # left over the pair itself.
+    # left over the pair itself. KSW2's walks the pair itself.
     var reverse = ties == Ties.LEFT
+    var ksw2 = ties == Ties.KSW2
     var started = space.tally.start()
     space.profile.reset(first, second, reverse)
     ref profile = space.profile
@@ -335,7 +349,10 @@ def edit_cigar(
             binary=runs,
             runs_capacity=2 * settled.distance + 2,
         )
-        diagonal_into(profile, space.traced, settled.distance, reverse, eqx, writer)
+        if ksw2:
+            ksw2_diagonal_into(profile, space.traced, settled.distance, eqx, writer)
+        else:
+            diagonal_into(profile, space.traced, settled.distance, reverse, eqx, writer)
         comptime if PROBES:
             space.tally.since(CIGAR_NS, started)
         return _edit_cigar(settled.distance, writer^, runs)
@@ -345,7 +362,23 @@ def edit_cigar(
         binary=runs,
         runs_capacity=2 * path.distance + 2,
     )
-    cigar_into(first, second, path, eqx, writer)
+    if ksw2:
+        # A band's tiles are traced by WFA2-lib's rule; KSW2's walk then runs about that path (see `ksw_cigar`).
+        var guide = CigarWriter(0, binary=True, runs_capacity=2 * path.distance + 2)
+        cigar_into(first, second, path, True, guide)
+        var guide_runs = guide^.finish_runs()
+        var walked = ksw_cigar(first, second, Costs.edit(), Span(guide_runs), space.ties)
+        var matched = UInt8(ord("=")) if eqx else UInt8(ord("M"))
+        var substituted = UInt8(ord("X")) if eqx else UInt8(ord("M"))
+        for run in walked:
+            var letter = UInt8(run & 0xFF)
+            if letter == UInt8(ord("=")):
+                letter = matched
+            elif letter == UInt8(ord("X")):
+                letter = substituted
+            writer.add(letter, Int(run >> 8))
+    else:
+        cigar_into(first, second, path, eqx, writer)
     comptime if PROBES:
         space.tally.since(CIGAR_NS, started)
     return _edit_cigar(path.distance, writer^, runs)

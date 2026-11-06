@@ -760,11 +760,13 @@ def aligned_within(
 ) raises AlignmentError -> Alignment:
     """`aligned_within` through `space`'s searches, which a batch's worker keeps from pair to pair; with `runs`
     the CIGAR as runs (`Alignment.runs`) whichever engine finds it."""
-    # The engines find the cost and the span by `LEFT`; `KSW2` then writes the letters between again.
+    # The engines find the cost and the span by `LEFT`; `KSW2` then writes the letters between again, unless the
+    # edit engine walked them by it already.
     var engine_ties = Ties.LEFT if ties == Ties.KSW2 else ties
     if not mode.is_scored():
-        var found = least_costly(reference, query, costs, mode, band, max_cost, engine_ties, eqx, limit, space, runs)
-        if ties == Ties.KSW2:
+        var walked = False
+        var found = least_costly(reference, query, costs, mode, band, max_cost, ties, eqx, limit, space, walked, runs)
+        if ties == Ties.KSW2 and not walked:
             ksw_rewrite(found, reference, query, costs, eqx, runs, space.ties, band)
         if runs:
             as_runs(found)
@@ -925,16 +927,20 @@ def least_costly(
     mode: Mode,
     band: Band,
     max_cost: Int,
-    ties: Ties,
+    rule: Ties,
     eqx: Bool,
     limit: Int,
     mut space: SearchSpace,
+    mut walked: Bool,
     runs: Bool = False,
 ) raises AlignmentError -> Alignment:
     """The least costly alignment with `mode`'s free ends, or `not_found()`: by the bit-parallel sweep
     where it serves the pair (see `swept_by_bits`), else by the wavefront, the same alignment at the same
     costs, through `space`'s searches. With `runs` the sweep writes its CIGAR as runs (`Alignment.runs`);
-    the wavefront's stays text, which `aligned_within` turns."""
+    the wavefront's stays text, which `aligned_within` turns. `Ties.KSW2` the sweep walks itself, setting
+    `walked`; elsewhere the span and the CIGAR are `Ties.LEFT`'s, for `aligned_within` to write again."""
+    var ties = Ties.LEFT if rule == Ties.KSW2 else rule
+    walked = False
     var columns = len(reference)
     var rows = len(query)
     var ends = EndsFree.of(mode, columns, rows)
@@ -942,7 +948,8 @@ def least_costly(
         try:
             var scale = costs.unit_scale()
             if ends.first_begin == 0 and ends.first_end == 0:
-                var whole = edit_cigar(reference, query, space.edit, eqx, ties, kept_bytes(limit), runs)
+                var whole = edit_cigar(reference, query, space.edit, eqx, rule, kept_bytes(limit), runs)
+                walked = rule == Ties.KSW2
                 var cost = whole.distance * scale
                 var whole_runs = whole.runs^
                 whole.runs = List[UInt64]()
@@ -965,8 +972,9 @@ def least_costly(
                 hit = edit_search(query, reference, ends.first_begin == 0, ties)
             space.edit.tally.since(SEARCH_NS, started)
             var found = edit_cigar(
-                reference[hit.start : hit.end], query, space.edit, eqx, ties, kept_bytes(limit), runs
+                reference[hit.start : hit.end], query, space.edit, eqx, rule, kept_bytes(limit), runs
             )
+            walked = rule == Ties.KSW2
             var cost = found.distance * scale
             var found_runs = found.runs^
             found.runs = List[UInt64]()
