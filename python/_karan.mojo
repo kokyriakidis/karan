@@ -112,7 +112,7 @@ def mode_of(fields: PythonObject) raises -> Mode:
 
 @fieldwise_init
 struct Options(ImplicitlyCopyable):
-    """`(band_low, band_high, max_cost, eqx, right_ties, max_memory, capped)`: the cap only when `capped`,
+    """`(band_low, band_high, max_cost, eqx, ties, max_memory, capped)` (`ties` 0 KSW2, 1 right, 2 left): the cap only when `capped`,
     any value, a negative one leaving nothing within it as the library counts one; a memory of zero or
     less for the default."""
 
@@ -130,7 +130,14 @@ def options_of(fields: PythonObject) raises -> Options:
     # A band past any diagonal is no band.
     var band = Band(at[0], at[1])
     var memory = at[5] if at[5] > 0 else DEFAULT_MAX_MEMORY
-    return Options(band, at[2], at[6] != 0, at[3] != 0, Ties.RIGHT if at[4] != 0 else Ties.LEFT, memory)
+    return Options(
+        band,
+        at[2],
+        at[6] != 0,
+        at[3] != 0,
+        Ties.RIGHT if at[4] == 1 else (Ties.LEFT if at[4] == 2 else Ties.KSW2),
+        memory,
+    )
 
 
 def alignment_tuple(found: Alignment) raises -> PythonObject:

@@ -73,6 +73,11 @@ int main() {
     CHECK(karan::align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", Costs::edit(), Mode::global(), {}, karan::Ties::left, false)
               .cigar == "4M1D2M1I6M");
 
+    // The three rules for equal alignments: KSW2's by default, the gap before the substitution.
+    CHECK(karan::align("GCTACAGTG", "GCTGAGTG").cigar == "3=1D1X4=");
+    CHECK(karan::align("GCTACAGTG", "GCTGAGTG", Costs::edit(), Mode::global(), {}, karan::Ties::ksw2).cigar == "3=1D1X4=");
+    CHECK(karan::align("GCTACAGTG", "GCTGAGTG", Costs::edit(), Mode::global(), {}, karan::Ties::left).cigar == "3=1X1D4=");
+    CHECK(karan::align("ACGTTTTACG", "ACGTTTACG", Costs::edit(), Mode::global(), {}, karan::Ties::right).cigar == "6=1D3=");
     CHECK(karan::align("", "ACG").cigar == "3I");
     CHECK(karan::align("ACG", "").cigar == "3D");
     karan::Alignment empty = karan::align("", "");

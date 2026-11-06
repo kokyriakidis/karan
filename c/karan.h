@@ -105,19 +105,20 @@ typedef struct {
  * aligned or skipped less the query's, from the alignment's origin: the exact optimum over the
  * alignments inside; INT64_MIN and INT64_MAX for no band, KSW2's band of width `w` `-w ..= w`. A
  * `max_cost` of zero or more caps the cost, which the search proves past after about half of it.
- * `eqx` nonzero writes `=` and `X`, else `M`; of equally good alignments the CIGAR places indels
- * left, as minimap2 does, or with `right_ties` nonzero right, WFA2-lib's CIGAR byte for byte. A
+ * `eqx` nonzero writes `=` and `X`, else `M`; of equally good alignments the CIGAR is the one `ties`
+ * names: 0 KSW2's (minimap2's: gaps as early and substitutions as late as the cost allows), 1 every
+ * edit right (WFA2-lib's CIGAR byte for byte), 2 every edit left. A
  * `max_memory` above zero bounds the bytes of fronts an alignment keeps for its traceback, about 80 MB
  * by default; past it the pair is split, its cost still the least and the tie rule followed within
  * each piece, or at unit costs stretches of the band are swept again, the same CIGAR. A null pointer
- * is no band, no cap, `=` and `X`, indels left, the default memory.
+ * is no band, no cap, `=` and `X`, KSW2's ties, the default memory.
  */
 typedef struct {
     int64_t band_low;   /* The lowest diagonal a move may reach; INT64_MIN for no bound. */
     int64_t band_high;  /* The highest diagonal a move may reach; INT64_MAX for no bound. */
     int64_t max_cost;   /* The cost cap when zero or more; negative for none. */
     int64_t eqx;        /* Nonzero writes `=` and `X`, zero `M`. */
-    int64_t right_ties; /* Nonzero places tied indels right, zero left. */
+    int64_t ties;       /* 0 KSW2's rule (minimap2's), 1 WFA2-lib's (every edit right), 2 every edit left. */
     int64_t max_memory; /* The bytes of fronts kept for the traceback; zero or less for the default. */
 } karan_options;
 
@@ -172,7 +173,7 @@ int64_t karan_aligner_align(karan_aligner *aligner, const char *reference, int64
 
 /* The best score `karan_align` would return, with no alignment traced, into `*score`: for a mode with
  * a match score its matches' reward less its costs, else minus the least cost. Zero, or a KARAN_ code.
- * The options' cap, `eqx`, `right_ties` and memory change nothing. */
+ * The options' cap, `eqx`, `ties` and memory change nothing. */
 int64_t karan_score(const char *reference, int64_t reference_length, const char *query, int64_t query_length,
                      const karan_costs *costs, const karan_mode *mode, const karan_options *options, int64_t *score);
 
@@ -335,7 +336,13 @@ struct Band {
 
 /* Which of several equally good alignments a CIGAR spells: indels placed left, as minimap2 places them,
  * or right, WFA2-lib's CIGAR byte for byte. */
-enum class Ties { left, right };
+/* Which of equally good alignments: KSW2's (minimap2's, the default), every edit left, or every edit right
+ * (WFA2-lib's CIGAR byte for byte). */
+enum class Ties { ksw2, left, right };
+
+namespace detail {
+inline int64_t ties_code(Ties ties) { return ties == Ties::right ? 1 : (ties == Ties::left ? 2 : 0); }
+}  // namespace detail
 
 /* An optimal alignment (see `karan_alignment`). */
 struct Alignment {
@@ -384,7 +391,7 @@ inline std::optional<Alignment> align(std::string_view reference, std::string_vi
                                       const Mode &mode, Band band, int64_t max_cost, Ties ties, bool eqx,
                                       int64_t max_memory, karan_aligner *aligner = nullptr) {
     karan_costs c = c_costs(costs);
-    karan_options options{band.low, band.high, max_cost, eqx ? 1 : 0, ties == Ties::right ? 1 : 0, max_memory};
+    karan_options options{band.low, band.high, max_cost, eqx ? 1 : 0, detail::ties_code(ties), max_memory};
     karan_alignment found{};
     int64_t status =
         aligner ? karan_aligner_align(aligner, reference.data(), static_cast<int64_t>(reference.size()),
@@ -438,7 +445,7 @@ inline std::vector<std::optional<Alignment>> alignments(const Batch &batch, cons
                                                         Band band, int64_t max_cost, Ties ties, bool eqx,
                                                         int threads, int64_t max_memory) {
     karan_costs c = c_costs(costs);
-    karan_options options{band.low, band.high, max_cost, eqx ? 1 : 0, ties == Ties::right ? 1 : 0, max_memory};
+    karan_options options{band.low, band.high, max_cost, eqx ? 1 : 0, detail::ties_code(ties), max_memory};
     std::vector<karan_alignment> found(batch.references.size());
     std::vector<int64_t> statuses(batch.references.size());
     check(karan_alignments(batch.size(), batch.references.data(), batch.reference_lengths.data(),
@@ -528,7 +535,7 @@ inline std::optional<int64_t> distance_within(std::string_view reference, std::s
 
 /* An optimal alignment, its kept fronts within `max_memory` bytes when above zero. */
 inline Alignment align(std::string_view reference, std::string_view query, const Costs &costs = Costs::edit(),
-                       const Mode &mode = Mode::global(), Band band = {}, Ties ties = Ties::left,
+                       const Mode &mode = Mode::global(), Band band = {}, Ties ties = Ties::ksw2,
                        bool eqx = true, int64_t max_memory = 0) {
     return *detail::align(reference, query, costs, mode, band, -1, ties, eqx, max_memory);
 }
@@ -536,7 +543,7 @@ inline Alignment align(std::string_view reference, std::string_view query, const
 /* An optimal alignment, or nothing when its cost passes `max_cost`. */
 inline std::optional<Alignment> align_within(std::string_view reference, std::string_view query, int64_t max_cost,
                                              const Costs &costs = Costs::edit(), const Mode &mode = Mode::global(),
-                                             Band band = {}, Ties ties = Ties::left, bool eqx = true,
+                                             Band band = {}, Ties ties = Ties::ksw2, bool eqx = true,
                                              int64_t max_memory = 0) {
     if (max_cost < 0) return std::nullopt;
     return detail::align(reference, query, costs, mode, band, max_cost, ties, eqx, max_memory);
@@ -573,7 +580,7 @@ inline std::vector<std::optional<int64_t>> distances_within(const std::vector<st
 inline std::vector<Alignment> alignments(const std::vector<std::string_view> &references,
                                          const std::vector<std::string_view> &queries,
                                          const Costs &costs = Costs::edit(), const Mode &mode = Mode::global(),
-                                         Band band = {}, Ties ties = Ties::left, bool eqx = true,
+                                         Band band = {}, Ties ties = Ties::ksw2, bool eqx = true,
                                          int threads = 0, int64_t max_memory = 0) {
     std::vector<Alignment> results;
     for (auto &found : detail::alignments(detail::Batch(references, queries), costs, mode, band, -1, ties, eqx,
@@ -587,7 +594,7 @@ inline std::vector<std::optional<Alignment>> alignments_within(const std::vector
                                                                const std::vector<std::string_view> &queries,
                                                                int64_t max_cost, const Costs &costs = Costs::edit(),
                                                                const Mode &mode = Mode::global(), Band band = {},
-                                                               Ties ties = Ties::left, bool eqx = true,
+                                                               Ties ties = Ties::ksw2, bool eqx = true,
                                                                int threads = 0, int64_t max_memory = 0) {
     if (max_cost < 0) return std::vector<std::optional<Alignment>>(references.size());
     return detail::alignments(detail::Batch(references, queries), costs, mode, band, max_cost, ties, eqx,
@@ -628,7 +635,7 @@ class Aligner {
 
     /* `karan::align` through this aligner. */
     Alignment align(std::string_view reference, std::string_view query, const Costs &costs = Costs::edit(),
-                    const Mode &mode = Mode::global(), Band band = {}, Ties ties = Ties::left, bool eqx = true,
+                    const Mode &mode = Mode::global(), Band band = {}, Ties ties = Ties::ksw2, bool eqx = true,
                     int64_t max_memory = 0) {
         return *detail::align(reference, query, costs, mode, band, -1, ties, eqx, max_memory, handle_);
     }
@@ -636,7 +643,7 @@ class Aligner {
     /* `karan::align_within` through this aligner. */
     std::optional<Alignment> align_within(std::string_view reference, std::string_view query, int64_t max_cost,
                                           const Costs &costs = Costs::edit(), const Mode &mode = Mode::global(),
-                                          Band band = {}, Ties ties = Ties::left, bool eqx = true,
+                                          Band band = {}, Ties ties = Ties::ksw2, bool eqx = true,
                                           int64_t max_memory = 0) {
         if (max_cost < 0) return std::nullopt;
         return detail::align(reference, query, costs, mode, band, max_cost, ties, eqx, max_memory, handle_);

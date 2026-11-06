@@ -63,7 +63,8 @@ Modes:
 Options:
   --band W | --band LOW,HIGH       every move within diagonals -W..=W, or LOW..=HIGH
   --max-cost C                     pairs costing more than C reported as unaligned
-  --ties left | right              equally good alignments: indels left (minimap2) or right (WFA2-lib)
+  --ties ksw2 | left | right       equally good alignments: KSW2's (minimap2's, the default), every edit
+                                   left, or right (WFA2-lib's CIGAR)
   --cigar-m                        M for matches and substitutions alike, not = and X
   --both-strands                   also align each query's reverse complement, keep the better
   --distance                       the cost alone, no alignment
@@ -255,7 +256,7 @@ def run() raises:
     var end_bonus = -1
     var band = Band()
     var max_cost = -1
-    var ties = Ties.LEFT
+    var ties = Ties.KSW2
     var eqx = True
     var both_strands = False
     var cost_only = False
@@ -324,9 +325,9 @@ def run() raises:
             if max_cost < 0:
                 fail("--max-cost: zero or more")
         elif argument == "--ties":
-            if value != "left" and value != "right":
-                fail("--ties: left or right")
-            ties = Ties.RIGHT if value == "right" else Ties.LEFT
+            if value != "ksw2" and value != "left" and value != "right":
+                fail("--ties: ksw2, left or right")
+            ties = Ties.RIGHT if value == "right" else (Ties.LEFT if value == "left" else Ties.KSW2)
         elif argument == "--format":
             if value != "tsv" and value != "sam" and value != "paf":
                 fail("--format: tsv, sam or paf")

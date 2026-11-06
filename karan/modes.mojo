@@ -421,10 +421,17 @@ struct Ties(Equatable, ImplicitlyCopyable, TrivialRegisterPassable, Writable):
     var identifier: UInt8
     comptime LEFT = Self(0)
     """Every edit as early as an equally good alignment allows, gaps shifted left through repeats: the
-    rule run from the start over both sequences reversed, as KSW2 places gaps by default and as variant
-    callers normalize indels."""
+    rule run from the start over both sequences reversed, as variant callers normalize indels. A substitution
+    beside a gap comes before it, where KSW2 puts the gap first (see `KSW2`)."""
     comptime RIGHT = Self(1)
     """Every edit as late as it allows, gaps shifted right: WFA2-lib's own CIGARs, byte for byte."""
+    comptime KSW2 = Self(2)
+    """minimap2's KSW2 and plegma's choice: the walk back from the end takes, at every cell, the diagonal (a
+    match or a substitution) when it is as good as anything, then a reference letter alone, a query letter
+    alone, the second gap piece's of each, a later move only when strictly cheaper; a gap runs on while that
+    costs strictly less than opening it there. Gaps come as early as the cost allows and substitutions as late,
+    as minimap2 writes them and as models trained on its alignments read them. The span with free ends is
+    `LEFT`'s; the letters between are aligned by this rule (see `ksw_ties`)."""
 
 
 struct Band(ImplicitlyCopyable, TrivialRegisterPassable, Writable):

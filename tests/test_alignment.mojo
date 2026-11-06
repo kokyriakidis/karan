@@ -2076,7 +2076,9 @@ def test_ties_follow_a_fixed_rule() raises:
                     second,
                 ).cigar
                 left = whole(
-                    align(first, second, Costs.two_piece(x, o, e, o2, e2), ends_mode(ends), band=band), first, second
+                    align(first, second, Costs.two_piece(x, o, e, o2, e2), ends_mode(ends), band=band, ties=Ties.LEFT),
+                    first,
+                    second,
                 ).cigar
                 mirrored = whole(
                     align(
@@ -2097,7 +2099,9 @@ def test_ties_follow_a_fixed_rule() raises:
                     second,
                 ).cigar
                 left = whole(
-                    align(first, second, Costs.affine(x, o, e), ends_mode(ends), band=band), first, second
+                    align(first, second, Costs.affine(x, o, e), ends_mode(ends), band=band, ties=Ties.LEFT),
+                    first,
+                    second,
                 ).cigar
                 mirrored = whole(
                     align(
@@ -2193,13 +2197,13 @@ def test_edit_ties_follow_a_fixed_rule() raises:
             var path = EditPath(moves^, List[UInt8](), first.byte_length(), second.byte_length(), reference.distance)
             assert_equal(right.cost, reference.distance)
             assert_equal(right.cigar, cigar_string(first, second, path, True), String("the right rule, trial ", trial))
-        var left = align(first, second)
+        var left = align(first, second, ties=Ties.LEFT)
         var mirrored = align(reversed_text(first), reversed_text(second), ties=Ties.RIGHT)
         assert_equal(left.cost, right.cost)
         assert_equal(left.cigar, reversed_cigar(mirrored.cigar), String("the left rule, trial ", trial))
         var capped = align(first, second, max_cost=right.cost, ties=Ties.RIGHT)
         assert_equal(capped.value().cigar, right.cigar, String("the wavefront's right rule, trial ", trial))
-        assert_equal(align(first, second, max_cost=left.cost).value().cigar, left.cigar)
+        assert_equal(align(first, second, max_cost=left.cost, ties=Ties.LEFT).value().cigar, left.cigar)
     # A gap in a run of repeats: at its left end by default, at its right end under WFA2-lib's rule.
     assert_equal(align("ACGTTTTACG", "ACGTTTACG").cigar, "3=1D6=")
 

@@ -32,6 +32,7 @@ from .edit_distance import edit_cigar, edit_distance
 from .edit_search import EditHit, edit_search
 from .errors import AlignmentError, ErrorKind
 from .cigar import cigar_matches, cigar_runs, reversed_list, runs_of
+from .ksw_ties import TieBuffers, ksw_cigar
 from .search import Hit, local_scores_by_lane
 from .scored import (
     FROM_EDGE,
@@ -151,7 +152,7 @@ def align(
     mode: Mode = Mode.GLOBAL,
     *,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     max_memory: Int = DEFAULT_MAX_MEMORY,
 ) raises AlignmentError -> Alignment:
@@ -187,7 +188,7 @@ def align(
     mode: Mode = Mode.GLOBAL,
     *,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     max_memory: Int = DEFAULT_MAX_MEMORY,
 ) raises AlignmentError -> Alignment:
@@ -207,7 +208,7 @@ def align(
     *,
     max_cost: Int,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     max_memory: Int = DEFAULT_MAX_MEMORY,
 ) raises AlignmentError -> Optional[Alignment]:
@@ -229,7 +230,7 @@ def align(
     *,
     max_cost: Int,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     max_memory: Int = DEFAULT_MAX_MEMORY,
 ) raises AlignmentError -> Optional[Alignment]:
@@ -343,7 +344,7 @@ struct Aligner(Movable):
         mode: Mode = Mode.GLOBAL,
         *,
         band: Band = Band(),
-        ties: Ties = Ties.LEFT,
+        ties: Ties = Ties.KSW2,
         eqx: Bool = True,
         max_memory: Int = DEFAULT_MAX_MEMORY,
     ) raises AlignmentError -> Alignment:
@@ -372,7 +373,7 @@ struct Aligner(Movable):
         mode: Mode = Mode.GLOBAL,
         *,
         band: Band = Band(),
-        ties: Ties = Ties.LEFT,
+        ties: Ties = Ties.KSW2,
         eqx: Bool = True,
         max_memory: Int = DEFAULT_MAX_MEMORY,
         runs: Bool = False,
@@ -398,7 +399,7 @@ struct Aligner(Movable):
         *,
         max_cost: Int,
         band: Band = Band(),
-        ties: Ties = Ties.LEFT,
+        ties: Ties = Ties.KSW2,
         eqx: Bool = True,
         max_memory: Int = DEFAULT_MAX_MEMORY,
     ) raises AlignmentError -> Optional[Alignment]:
@@ -427,7 +428,7 @@ struct Aligner(Movable):
         *,
         max_cost: Int,
         band: Band = Band(),
-        ties: Ties = Ties.LEFT,
+        ties: Ties = Ties.KSW2,
         eqx: Bool = True,
         max_memory: Int = DEFAULT_MAX_MEMORY,
     ) raises AlignmentError -> Optional[Alignment]:
@@ -759,8 +760,12 @@ def aligned_within(
 ) raises AlignmentError -> Alignment:
     """`aligned_within` through `space`'s searches, which a batch's worker keeps from pair to pair; with `runs`
     the CIGAR as runs (`Alignment.runs`) whichever engine finds it."""
+    # The engines find the cost and the span by `LEFT`; `KSW2` then writes the letters between again.
+    var engine_ties = Ties.LEFT if ties == Ties.KSW2 else ties
     if not mode.is_scored():
-        var found = least_costly(reference, query, costs, mode, band, max_cost, ties, eqx, limit, space, runs)
+        var found = least_costly(reference, query, costs, mode, band, max_cost, engine_ties, eqx, limit, space, runs)
+        if ties == Ties.KSW2:
+            ksw_rewrite(found, reference, query, costs, eqx, runs, band)
         if runs:
             as_runs(found)
         return found^
@@ -768,12 +773,114 @@ def aligned_within(
         raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "a mode with a match score takes no cost cap")
     _ = penalties_of(costs)
     var started = space.edit.tally.start()
-    var best = best_scoring(reference, query, costs, mode, band, ties, eqx, limit)
+    var best = best_scoring(reference, query, costs, mode, band, engine_ties, eqx, limit)
     space.edit.tally.since(SCORED_NS, started)
     space.edit.tally.set(ENGINE, ENGINE_SCORED)
+    if ties == Ties.KSW2:
+        ksw_rewrite(
+            best,
+            reference,
+            query,
+            rewarded_costs(costs, mode.match_score),
+            eqx,
+            runs,
+            band,
+            mode.match_score,
+            mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,
+        )
     if runs:
         as_runs(best)
     return best^
+
+
+def rewarded_costs(costs: Costs, reward: Int) -> Costs:
+    """Costs whose least-cost alignment between two fixed ends is the best-scoring one with a match earning
+    `reward`: a substitution `2 (x + a)`, an opening `2 o`, an extension `2 e + a` (the score at a cell is the
+    reward's `(i + j) / 2` less half the cost)."""
+    if reward == 0:
+        return costs
+    var out = Costs(
+        2 * (costs.mismatch + reward),
+        2 * costs.opening,
+        2 * costs.extension + reward,
+        2 * costs.opening2 if costs.opening2 >= 0 else -1,
+        2 * costs.extension2 + reward if costs.opening2 >= 0 else 0,
+    )
+    out.deletion_opening = 2 * costs.deletion_opening
+    out.deletion_extension = 2 * costs.deletion_extension + reward
+    out.deletion_opening2 = 2 * costs.deletion_opening2 if costs.deletion_opening2 >= 0 else -1
+    out.deletion_extension2 = 2 * costs.deletion_extension2 + reward if costs.deletion_opening2 >= 0 else 0
+    return out
+
+
+def ksw_rewrite(
+    mut found: Alignment,
+    reference: ImmSpan[UInt8, _],
+    query: ImmSpan[UInt8, _],
+    costs: Costs,
+    eqx: Bool,
+    runs: Bool,
+    band: Band = Band(),
+    reward: Int = 0,
+    from_end: Bool = False,
+):
+    """An alignment's CIGAR written again by KSW2's rule (`Ties.KSW2`, `ksw_ties.ksw_cigar`) over the same span,
+    guided by the path it holds and inside `band`: the same cost (or with a match `reward` the same score, its
+    cost then the reward's matches less it), the one equal alignment KSW2 picks."""
+    if found.reference_end <= found.reference_start and found.query_end <= found.query_start:
+        return
+    var guide = found.runs.copy() if len(found.runs) > 0 else runs_of(found.cigar)
+    var buf = TieBuffers()
+    # The band's diagonals as the span's own cells read them, `i - j` at reference letter `i` and query letter
+    # `j` of the span: counted from the start of both sequences, or for an extension fixed at their ends, from
+    # there (`Band.mirrored`).
+    var n = found.reference_end - found.reference_start
+    var m = found.query_end - found.query_start
+    var low: Int
+    var high: Int
+    if from_end:
+        low = (n - m) - band.high
+        high = (n - m) - band.low
+    else:
+        var shift = found.reference_start - found.query_start
+        low = band.low - shift
+        high = band.high - shift
+    var written = ksw_cigar(
+        reference[found.reference_start : found.reference_end],
+        query[found.query_start : found.query_end],
+        costs,
+        Span(guide),
+        buf,
+        low,
+        high,
+    )
+    if reward > 0:
+        var matches = 0
+        for r in written:
+            if UInt8(r & 0xFF) == UInt8(ord("=")):
+                matches += Int(r >> 8)
+        found.cost = reward * matches - found.score
+    if not eqx:
+        # `=` and `X` as one `M`.
+        var merged = List[UInt64](capacity=len(written))
+        for r in written:
+            var letter = UInt8(r & 0xFF)
+            if letter == UInt8(ord("=")) or letter == UInt8(ord("X")):
+                letter = UInt8(ord("M"))
+            if len(merged) > 0 and UInt8(merged[len(merged) - 1] & 0xFF) == letter:
+                merged[len(merged) - 1] += r & ~UInt64(0xFF)
+            else:
+                merged.append((r & ~UInt64(0xFF)) | UInt64(letter))
+        written = merged^
+    if len(found.runs) > 0 or runs:
+        found.runs = written^
+        found.cigar = String()
+    else:
+        var text = String()
+        for r in written:
+            text += String(Int(r >> 8))
+            text += chr(Int(r & 0xFF))
+        found.cigar = text^
 
 
 def as_runs(mut found: Alignment):
@@ -1592,7 +1699,7 @@ def alignments(
     mode: Mode = Mode.GLOBAL,
     *,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     threads: Optional[Int] = None,
     max_memory: Int = DEFAULT_MAX_MEMORY,
@@ -1616,7 +1723,7 @@ def alignments(
     *,
     max_cost: Int,
     band: Band = Band(),
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     eqx: Bool = True,
     threads: Optional[Int] = None,
     max_memory: Int = DEFAULT_MAX_MEMORY,
@@ -1666,6 +1773,8 @@ def capped_alignments(
     var span_ptr = spans.unsafe_ptr()
     var reference_texts = StringTexts.of(references)
     var query_texts = StringTexts.of(queries)
+    # The lanes spell `LEFT`'s CIGAR; `KSW2` writes a settled pair's again below.
+    var lane_ties = Ties.LEFT if ties == Ties.KSW2 else ties
     var penalties = alignments_in_lanes(
         pairs,
         reference_texts,
@@ -1674,7 +1783,7 @@ def capped_alignments(
         mode,
         band,
         max_cost,
-        ties,
+        lane_ties,
         workers,
         limit,
         laned_ptr,
@@ -1721,7 +1830,20 @@ def capped_alignments(
                 limit,
             )
             if spelled:
-                out[unsafe_offset=index] = spelled^
+                var found = spelled.take()
+                if ties == Ties.KSW2:
+                    ksw_rewrite(
+                        found,
+                        references[index].as_bytes(),
+                        queries[index].as_bytes(),
+                        rewarded_costs(costs, mode.match_score) if mode.is_scored() else costs,
+                        eqx,
+                        False,
+                        band,
+                        mode.match_score if mode.is_scored() else 0,
+                        mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,
+                    )
+                out[unsafe_offset=index] = Optional(found^)
                 return
         try:
             out[unsafe_offset=index] = optional(
@@ -1772,7 +1894,7 @@ def search(
     best: Optional[Int] = None,
     max_cost: Optional[Int] = None,
     aligned: Bool = False,
-    ties: Ties = Ties.LEFT,
+    ties: Ties = Ties.KSW2,
     threads: Optional[Int] = None,
 ) raises AlignmentError -> List[Hit]:
     """The query against every reference, a database search: each reference's `Hit`, its score, the

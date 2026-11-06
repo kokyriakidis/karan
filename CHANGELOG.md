@@ -45,9 +45,14 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   the band could score as well, the rest over whole matrices, several pairs a warp; a pair too tall
   for one block's carry tiled over global memory, its alignment traced in linear space.
 - Unit-cost distances on the GPU, globally, a thread a pair by Myers' bit-vectors.
-- One rule for ties (`Ties`): of equally good alignments, indels placed left by default, as minimap2
-  places them, or right, WFA2-lib's CIGAR byte for byte; with free ends the span first, by the same
-  rule, whichever search found the cost, under any band or cap.
+- One rule for ties (`Ties`): of equally good alignments, KSW2's by default (`Ties.KSW2`, minimap2's and
+  plegma's: the walk back from the end takes the diagonal at every tie, then a deletion, an insertion, the
+  second gap piece's, so gaps come as early and substitutions as late as the cost allows), every edit left
+  (`Ties.LEFT`), or every edit right, WFA2-lib's CIGAR byte for byte (`Ties.RIGHT`); with free ends the span
+  first (`LEFT`'s for `KSW2`), whichever search found the cost, under any band or cap. `KSW2` is written by
+  Gotoh's recurrence over the cells about the path a search found (`ksw_ties`), and over minimap2's scores as
+  costs gives `ksw_extd2`'s CIGAR exactly. The C options' `ties` (formerly `right_ties`), Python's and the
+  command line's `ties` take it too.
 - Bands of diagonals, cost caps (`max_cost`), and batches (`distances`, `alignments`, `scores`),
   capped too, many pairs at once in the lanes of a SIMD register: costs and alignments, globally and
   with free ends, an alignment's span found first, its end then its start, as the rule for ties picks

@@ -43,7 +43,9 @@ from karan.api import (
     cost_within,
     distances_in_lanes,
     each_pair,
+    ksw_rewrite,
     longest_first,
+    rewarded_costs,
 )
 from karan.cigar import text_of
 from karan.common import FIRST_SENTINEL, spread
@@ -153,8 +155,8 @@ def mode_of(fields: OptionalPointer[Int, MutAnyOrigin]) raises AlignmentError ->
 
 @fieldwise_init
 struct Options(ImplicitlyCopyable):
-    """`karan_options`: the band's two edges, the cost cap, `eqx`, `right_ties` and the memory for
-    kept fronts. Null is no band, no cap, `=` and `X`, indels placed left, and the default memory."""
+    """`karan_options`: the band's two edges, the cost cap, `eqx`, `ties` and the memory for kept fronts.
+    Null is no band, no cap, `=` and `X`, KSW2's ties, and the default memory."""
 
     var band: Band
     var max_cost: Int
@@ -167,11 +169,12 @@ def options_of(fields: OptionalPointer[Int, MutAnyOrigin]) -> Options:
     """The `Options` a `karan_options` asks for: a negative cap for none, and the default memory for zero or
     less."""
     if not fields:
-        return Options(Band(), -1, True, Ties.LEFT, DEFAULT_MAX_MEMORY)
+        return Options(Band(), -1, True, Ties.KSW2, DEFAULT_MAX_MEMORY)
     var at = fields.value()
     # The C integer limits stand for no band.
     var band = Band(at[unsafe_offset=0], at[unsafe_offset=1])
-    var ties = Ties.RIGHT if at[unsafe_offset=4] != 0 else Ties.LEFT
+    var code = at[unsafe_offset=4]
+    var ties = Ties.RIGHT if code == 1 else (Ties.LEFT if code == 2 else Ties.KSW2)
     var memory = at[unsafe_offset=5] if at[unsafe_offset=5] > 0 else DEFAULT_MAX_MEMORY
     return Options(band, at[unsafe_offset=2], at[unsafe_offset=3] != 0, ties, memory)
 
@@ -291,7 +294,7 @@ def karan_distance(
 ) abi("C") -> Int:
     """The least cost of aligning the query to the reference (see `distance`), or a negative code:
     `ABOVE_MAX` when it passes a `max_cost` of zero or more, `OUTSIDE_BAND` when no alignment fits the
-    band, or under a cap `ABOVE_MAX` again. The options' `eqx` and `right_ties` change nothing."""
+    band, or under a cap `ABOVE_MAX` again. The options' `eqx` and `ties` change nothing."""
     try:
         var space = SearchSpace()
         return distance_code(
@@ -768,7 +771,7 @@ def alignments_part(
         wanted_mode,
         asked.band,
         asked.max_cost if capped else Int.MAX,
-        asked.ties,
+        Ties.LEFT if asked.ties == Ties.KSW2 else asked.ties,
         workers,
         limit,
         found_ptr,
@@ -800,9 +803,22 @@ def alignments_part(
                 limit,
             )
             if spelled:
-                statuses[unsafe_offset=index] = written(
-                    spelled.value(), alignments.unsafe_offset(index * ALIGNMENT_FIELDS)
-                )
+                var found = spelled.take()
+                if asked.ties == Ties.KSW2:
+                    ksw_rewrite(
+                        found,
+                        Span(unsafe_ptr=references[unsafe_offset=index], length=reference_lengths[unsafe_offset=index]),
+                        Span(unsafe_ptr=queries[unsafe_offset=index], length=query_lengths[unsafe_offset=index]),
+                        rewarded_costs(
+                            wanted_costs, wanted_mode.match_score
+                        ) if wanted_mode.is_scored() else wanted_costs,
+                        asked.eqx,
+                        False,
+                        asked.band,
+                        wanted_mode.match_score if wanted_mode.is_scored() else 0,
+                        wanted_mode.kind == Mode.EXTENSION and wanted_mode.anchor == Anchor.END,
+                    )
+                statuses[unsafe_offset=index] = written(found, alignments.unsafe_offset(index * ALIGNMENT_FIELDS))
                 return
         statuses[unsafe_offset=index] = align_into(
             references[unsafe_offset=index],

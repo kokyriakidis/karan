@@ -414,9 +414,9 @@ class LocalScores:
 
 def _options(band: Optional[Band], max_cost: Optional[int], eqx: bool, ties: str, max_memory: Optional[int]) -> tuple:
     """The options as the extension takes them, in `karan_options`'s order and then whether there is a cap,
-    0 for the default memory. Raises `ValueError` for a `ties` other than `"left"` or `"right"`."""
-    if ties not in ("left", "right"):
-        raise ValueError("ties: 'left' or 'right'")
+    0 for the default memory. Raises `ValueError` for a `ties` other than `"ksw2"`, `"left"` or `"right"`."""
+    if ties not in ("ksw2", "left", "right"):
+        raise ValueError("ties: 'ksw2', 'left' or 'right'")
     band = band or Band()
     _ints(band.low, band.high)
     if max_memory is not None:
@@ -426,7 +426,7 @@ def _options(band: Optional[Band], max_cost: Optional[int], eqx: bool, ties: str
         band.high,
         0 if max_cost is None else _ints(max_cost)[0],
         1 if eqx else 0,
-        1 if ties == "right" else 0,
+        1 if ties == "right" else (2 if ties == "left" else 0),
         max_memory or 0,
         0 if max_cost is None else 1,
     )
@@ -455,12 +455,13 @@ def align(
     *,
     band: Optional[Band] = None,
     max_cost: Optional[int] = None,
-    ties: str = "left",
+    ties: str = "ksw2",
     eqx: bool = True,
     max_memory: Optional[int] = None,
 ) -> Optional[Alignment]:
     """An optimal alignment as `mode` asks, or None past `max_cost`. Of equally good alignments the
-    one `ties` names: indels placed left, as minimap2 places them, or `"right"`, WFA2-lib's CIGAR. The
+    one `ties` names: `"ksw2"`, minimap2's (gaps as early and substitutions as late as the cost allows),
+    `"left"` every edit as early as allowed, or `"right"`, WFA2-lib's CIGAR. The
     fronts kept for the traceback stay within `max_memory` bytes, about 80 MB by default. Under a
     `Scoring`, which takes no band, cap, tie rule or memory, Gotoh's walk picks among equals."""
     if isinstance(costs, Scoring):
@@ -504,7 +505,7 @@ class Aligner:
         *,
         band: Optional[Band] = None,
         max_cost: Optional[int] = None,
-        ties: str = "left",
+        ties: str = "ksw2",
         eqx: bool = True,
         max_memory: Optional[int] = None,
     ) -> Optional[Alignment]:
@@ -571,7 +572,7 @@ def alignments(
     *,
     band: Optional[Band] = None,
     max_cost: Optional[int] = None,
-    ties: str = "left",
+    ties: str = "ksw2",
     eqx: bool = True,
     max_memory: Optional[int] = None,
     threads: int = 0,
@@ -607,7 +608,7 @@ def search(
     best: Optional[int] = None,
     max_cost: Optional[int] = None,
     aligned: bool = False,
-    ties: str = "left",
+    ties: str = "ksw2",
     threads: int = 0,
 ) -> list:
     """The query against every reference, the best first: each reference's `Hit`; with `best` that

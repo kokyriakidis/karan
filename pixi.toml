@@ -28,6 +28,8 @@ test = {cmd = "./build/test_alignment", depends-on = ["build-tests"]}
 # karan.ksw2 against minimap2's ksw_extd2_sse: its outputs on 600 cases, byte for byte (see tests/test_ksw2.mojo).
 build-test-ksw2 = {cmd = "mojo build -I . tests/test_ksw2.mojo -o build/test_ksw2", depends-on = ["prepare"]}
 test-ksw2 = {cmd = "./build/test_ksw2", depends-on = ["build-test-ksw2"]}
+build-test-ksw-ties = {cmd = "mojo build -I . tests/test_ksw_ties.mojo -o build/test_ksw_ties", depends-on = ["prepare"]}
+test-ksw-ties = {cmd = "./build/test_ksw_ties", depends-on = ["build-test-ksw-ties"]}
 # Random pairs, costs, modes, bands and caps, each answer held to the full matrix: `pixi run fuzz [cases] [seed]`.
 build-fuzz = {cmd = "mojo build -I . -I tests tests/fuzz.mojo -o build/fuzz $MOJO_ACCELERATOR", depends-on = ["prepare"]}
 fuzz = {cmd = "./build/fuzz", depends-on = ["build-fuzz"]}

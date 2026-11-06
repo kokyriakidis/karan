@@ -283,7 +283,8 @@ def check(trial: Case) raises:
         raise Error(String("the alignment earns ", earned.score, ", the matrix's best is ", best.value()))
     # Free ends: the span the tie rule names.
     if model.kind == ENDS and not trial.mode.is_global():
-        var span = rule_span(model, trial.reference, trial.query, trial.ties == Ties.LEFT)
+        # `KSW2` takes `LEFT`'s span.
+        var span = rule_span(model, trial.reference, trial.query, trial.ties != Ties.RIGHT)
         if (
             span[0] != found.reference_start
             or span[1] != found.reference_end
@@ -360,8 +361,8 @@ def check(trial: Case) raises:
                 )
             )
     # Ties: the left rule is the right one over both sequences reversed, read backwards, span and all;
-    # a split follows it within its pieces alone.
-    if trial.memory != DEFAULT_MAX_MEMORY:
+    # a split follows it within its pieces alone. `KSW2` has no mirror (its walk runs from the end either way).
+    if trial.memory != DEFAULT_MAX_MEMORY or trial.ties == Ties.KSW2:
         return
     if trial.mode.kind == Mode.SMITH_WATERMAN:
         var n = trial.reference.byte_length()
@@ -427,7 +428,8 @@ def random_case() raises -> Case:
             high = low + draw(0, 4)
         band = Band(low, high)
     var memory = DEFAULT_MAX_MEMORY if chance(0.7) else draw(0, 2000)
-    return Case(pair[0], pair[1], costs, mode, band, Ties.RIGHT if chance(0.5) else Ties.LEFT, chance(0.8), memory)
+    var ties = Ties.KSW2 if chance(0.34) else (Ties.RIGHT if chance(0.5) else Ties.LEFT)
+    return Case(pair[0], pair[1], costs, mode, band, ties, chance(0.8), memory)
 
 
 def random_scoring(alphabet: String) raises -> Scoring:
