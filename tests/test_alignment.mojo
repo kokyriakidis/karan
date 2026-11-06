@@ -51,7 +51,7 @@ from karan.gotoh import (
 )
 from karan.scoring import DNA_ALPHABET, tabulated_end
 from karan.vector_score import reach_back
-from karan.cigar import cigar_runs
+from karan.cigar import cigar_runs, runs_of
 from karan.cigar import reversed_text as reversed_bytes
 from karan.edit_distance import edit_distance as bit_parallel_distance
 from karan.scored import ANYWHERE, best_end, end_of
@@ -4257,6 +4257,69 @@ def test_device_symbols_stay_in_their_tables() raises:
     var patterns: List[String] = [text_of(Span(every))]
     var texts: List[String] = [text_of(Span(many))]
     assert_equal(distances(patterns, texts, placement=device)[0], distances(patterns, texts)[0])
+
+
+def _codes_of(text: String) -> List[UInt8]:
+    """A sequence's letters as the bases' 2-bit codes (`N` as 4)."""
+    var out = List[UInt8](capacity=text.byte_length())
+    for byte in text.as_bytes():
+        if byte == UInt8(ord("A")):
+            out.append(0)
+        elif byte == UInt8(ord("C")):
+            out.append(1)
+        elif byte == UInt8(ord("G")):
+            out.append(2)
+        elif byte == UInt8(ord("T")):
+            out.append(3)
+        else:
+            out.append(4)
+    return out^
+
+
+def _with_ns(text: String, every: Int) -> String:
+    """Every `every`th letter an `N` (none with `every` 0)."""
+    if every == 0:
+        return text
+    var out = List[UInt8](capacity=text.byte_length())
+    var bytes = text.as_bytes()
+    for index in range(len(bytes)):
+        out.append(UInt8(ord("N")) if index % every == every - 1 else bytes[index])
+    return String(unsafe_from_utf8=out)
+
+
+def test_aligner_takes_codes_and_gives_runs() raises:
+    """Sequences given as the bases' 2-bit codes align as their letters do, `N` among them; and asked for
+    runs, the CIGAR comes as the numbers of the text's runs, whichever engine finds it: unit and affine
+    costs, globally and with free ends of every kind, under either tie rule."""
+    seed(61)
+    var aligner = Aligner()
+    var all_costs: List[Costs] = [Costs.edit(), Costs.affine(4, 6, 2)]
+    var modes: List[Mode] = [Mode.GLOBAL, Mode.PREFIX, Mode.SUFFIX, Mode.INFIX]
+    for trial in range(160):
+        var reference = _with_ns(
+            random_sequence(1, [40, 600, 12, 250, 2000][trial % 5], DNA_ALPHABET), [0, 0, 97][trial % 3]
+        )
+        var query = _with_ns(mutated(reference, [0.0, 0.02, 0.1][trial % 3], 8), [0, 131, 0, 53][trial % 4])
+        if query.byte_length() == 0:
+            continue
+        var costs = all_costs[trial % 2]
+        var mode = modes[(trial // 2) % 4]
+        var ties = Ties.LEFT if trial % 3 else Ties.RIGHT
+        var letters = aligner.align(reference.as_bytes(), query.as_bytes(), costs, mode, ties=ties)
+        var r_codes = _codes_of(reference)
+        var q_codes = _codes_of(query)
+        var coded = aligner.align(Span(r_codes), Span(q_codes), costs, mode, ties=ties)
+        assert_equal(coded.cost, letters.cost)
+        assert_equal(coded.cigar, letters.cigar)
+        assert_equal(coded.reference_start, letters.reference_start)
+        assert_equal(coded.reference_end, letters.reference_end)
+        var with_runs = aligner.align(Span(r_codes), Span(q_codes), costs, mode, ties=ties, runs=True)
+        assert_equal(with_runs.cigar.byte_length(), 0)
+        assert_equal(with_runs.cost, letters.cost)
+        var expected = runs_of(letters.cigar)
+        assert_equal(len(with_runs.runs), len(expected))
+        for index in range(len(expected)):
+            assert_equal(with_runs.runs[index], expected[index])
 
 
 def main() raises:

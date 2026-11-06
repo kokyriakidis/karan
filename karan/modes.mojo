@@ -480,7 +480,6 @@ struct Band(ImplicitlyCopyable, TrivialRegisterPassable, Writable):
         return Band(target - self.high, target - self.low)
 
 
-@fieldwise_init
 struct Alignment(Copyable, Movable, Writable):
     """An optimal alignment: of `reference[reference_start:reference_end]` against
     `query[query_start:query_end]`, as a CIGAR over those letters alone, `=` a match and `X` a
@@ -498,6 +497,29 @@ struct Alignment(Copyable, Movable, Writable):
     var reference_end: Int
     var query_start: Int
     var query_end: Int
+    var runs: List[UInt64]
+    """With `runs` asked of `Aligner.align`, the CIGAR's runs as numbers (`cigar.run_of`: length above eight
+    bits, letter below) and `cigar` empty; otherwise empty."""
+
+    def __init__(
+        out self,
+        cost: Int,
+        score: Int,
+        var cigar: String,
+        reference_start: Int,
+        reference_end: Int,
+        query_start: Int,
+        query_end: Int,
+        var runs: List[UInt64] = List[UInt64](),
+    ):
+        self.cost = cost
+        self.score = score
+        self.cigar = cigar^
+        self.reference_start = reference_start
+        self.reference_end = reference_end
+        self.query_start = query_start
+        self.query_end = query_end
+        self.runs = runs^
 
     def gapped(self, reference: String, query: String) -> Tuple[String, String]:
         """The aligned parts of both sequences as two rows of one length, `-` against each gapped letter."""

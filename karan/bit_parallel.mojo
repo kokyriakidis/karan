@@ -762,15 +762,19 @@ def encoded_chunk[
             bytes = bytes.reversed()
     else:
         bytes = source.unsafe_offset(at).unsafe_load[width=width]()
-    target.unsafe_offset(at).unsafe_store(base_codes[width](bytes))
-    return not_bases[width](bytes)
+    # A byte under four is a base's 2-bit code already (a caller holding its reads packed hands them over as
+    # codes, no letters made of them): kept as it is. Letters are never that low, so the two cannot mix up.
+    var coded = bytes.lt(4)
+    target.unsafe_offset(at).unsafe_store(coded.select(bytes, base_codes[width](bytes)))
+    return not_bases[width](bytes) & ~coded
 
 
 def encoded_bases(
     source: ImmPointer[UInt8, _], count: Int, target: MutPointer[UInt8, _], reverse: Bool = False
 ) -> Bool:
     """Writes each of `count` bytes' base code to `target`, thirty-two at a time, with `reverse` back to
-    front, and whether every byte was `A`, `C`, `G` or `T`: a byte of these gives its code from its ASCII
+    front, and whether every byte was `A`, `C`, `G` or `T` (or a base's 2-bit code, 0 to 3, taken as it is):
+    a letter of these gives its code from its ASCII
     bits, bit 2 set for `G` and `T`, the code's high bit, and bit 1 differing from bit 2 for `C` and `T`,
     its low bit. Any other byte's code is wrong until recoded (see `symbol_codes`). One pass for both,
     where a short read's profile once read each sequence twice, and for the turning too, where it once
@@ -816,6 +820,9 @@ def symbol_codes(
     table[ord("C")] = 1
     table[ord("G")] = 2
     table[ord("T")] = 3
+    # The bases' 2-bit codes, as `encoded_bases` takes them.
+    for code in range(4):
+        table[code] = Int16(code)
     var next_code = 4
     recode_symbols(first, column_codes, table, next_code)
     recode_symbols(second, row_codes, table, next_code)

@@ -741,17 +741,36 @@ def cigar_string(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], path: Edit
     """`path` as a CIGAR string (see `EditCigar`): its moves put left to right, the prefix reversed, and
     each run of one move written as one entry, a diagonal run split into its matches and substitutions
     by comparing the bases eight at a time unless `M` stands for both."""
+    var writer = CigarWriter(cigar_capacity(len(first), len(second), path.distance))
+    cigar_into(first, second, path, eqx, writer)
+    return writer^.finish()
+
+
+def cigar_capacity(columns: Int, rows: Int, distance: Int) -> Int:
+    """The bytes a CIGAR of at most `distance` edits takes: at most two runs an edit and one more, each its
+    length's digits and a letter."""
+    var digits = 1
+    var power = 10
+    while power <= max(columns, rows):
+        digits += 1
+        power *= 10
+    return (digits + 1) * (2 * distance + 2)
+
+
+def cigar_into(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], path: EditPath, eqx: Bool, mut writer: CigarWriter):
+    """`cigar_string` into `writer` (text or runs)."""
     var before = len(path.prefix)
     var count = before + len(path.suffix)
     if before == 0:
         # A path traced over the reversed pair, `Ties.LEFT`'s, is already in order: written where it lies.
-        return ordered_cigar(first, second, path.suffix.unsafe_ptr(), count, path.distance, eqx)
+        ordered_into(first, second, path.suffix.unsafe_ptr(), count, eqx, writer)
+        return
     var moves = List[UInt8](capacity=count)
     moves.resize(unsafe_uninit_length=count)
     var ordered = moves.unsafe_ptr()
     reversed_into(ordered, path.prefix.unsafe_ptr(), before)
     copy_bytes(ordered.unsafe_offset(before), path.suffix.unsafe_ptr(), len(path.suffix))
-    return ordered_cigar(first, second, ordered, count, path.distance, eqx)
+    ordered_into(first, second, ordered, count, eqx, writer)
 
 
 def ordered_cigar(
@@ -764,13 +783,20 @@ def ordered_cigar(
 ) -> String:
     """The CIGAR of `count` moves already left to right, at most `distance` edits (see `cigar_string`): what a
     caller holding its moves in order writes without the copy `cigar_string` makes to put them there."""
-    # At most two runs an edit and one more, each its length's digits and a letter.
-    var digits = 1
-    var power = 10
-    while power <= max(len(first), len(second)):
-        digits += 1
-        power *= 10
-    var writer = CigarWriter((digits + 1) * (2 * distance + 2))
+    var writer = CigarWriter(cigar_capacity(len(first), len(second), distance))
+    ordered_into(first, second, ordered, count, eqx, writer)
+    return writer^.finish()
+
+
+def ordered_into(
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
+    ordered: ImmPointer[UInt8, _],
+    count: Int,
+    eqx: Bool,
+    mut writer: CigarWriter,
+):
+    """`ordered_cigar` into `writer` (text or runs)."""
     var column = 0
     var row = 0
     var index = 0
@@ -797,10 +823,18 @@ def ordered_cigar(
         else:
             writer.add(UInt8(ord("I")), index - start)
             row += index - start
-    return writer^.finish()
 
 
 def diagonal_cigar(profile: Profile, fronts: DiagonalFronts, distance: Int, reversed: Bool, eqx: Bool) -> String:
+    """`diagonal_into` as a string."""
+    var writer = CigarWriter(cigar_capacity(profile.columns, profile.rows, distance))
+    diagonal_into(profile, fronts, distance, reversed, eqx, writer)
+    return writer^.finish()
+
+
+def diagonal_into(
+    profile: Profile, fronts: DiagonalFronts, distance: Int, reversed: Bool, eqx: Bool, mut writer: CigarWriter
+):
     """The CIGAR of the path `trace_diagonals` traces through `fronts`, written straight from them: each
     score undoes the matches its front slid over, `=`, and the edit that reached its start, a
     substitution `X`, as one after the furthest point is a mismatch, or a gap; `M` for both kinds of
@@ -810,16 +844,11 @@ def diagonal_cigar(profile: Profile, fronts: DiagonalFronts, distance: Int, reve
     var rows = profile.rows
     var matched = UInt8(ord("=")) if eqx else UInt8(ord("M"))
     var substituted = UInt8(ord("X")) if eqx else UInt8(ord("M"))
-    var digits = 1
-    var power = 10
-    while power <= max(columns, rows):
-        digits += 1
-        power *= 10
-    var writer = CigarWriter((digits + 1) * (2 * distance + 2))
     # The reversed pair's runs come right to left over it, left to right over the pair, the CIGAR's own
     # order: written as they come, the default `Ties.LEFT`'s every CIGAR, with no runs kept to turn round.
     if reversed:
-        return reversed_diagonal_cigar(fronts, distance, columns, rows, matched, substituted, writer^)
+        reversed_diagonal_into(fronts, distance, columns, rows, matched, substituted, writer)
+        return
     var letters = List[UInt8](capacity=2 * distance + 2)
     var lengths = List[Int](capacity=2 * distance + 2)
     var diagonal = columns - rows
@@ -852,18 +881,17 @@ def diagonal_cigar(profile: Profile, fronts: DiagonalFronts, distance: Int, reve
     for index in range(count):
         var at = count - 1 - index
         writer.add(letters[at], lengths[at])
-    return writer^.finish()
 
 
-def reversed_diagonal_cigar(
+def reversed_diagonal_into(
     fronts: DiagonalFronts,
     distance: Int,
     columns: Int,
     rows: Int,
     matched: UInt8,
     substituted: UInt8,
-    var writer: CigarWriter,
-) -> String:
+    mut writer: CigarWriter,
+):
     """`diagonal_cigar` for the reversed pair's fronts, each run written into `writer` as it is traced, which
     is the pair's own order."""
     var diagonal = columns - rows
@@ -889,4 +917,3 @@ def reversed_diagonal_cigar(
         score -= 1
     if column > 0:
         writer.add(matched, column)
-    return writer^.finish()

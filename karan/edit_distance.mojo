@@ -79,7 +79,8 @@ from .probes import (
     TWO_ENDED_STEPS,
 )
 from .seeds import SeedHeuristic
-from .traceback import cigar_string, diagonal_cigar, EditPath
+from .cigar import CigarWriter
+from .traceback import cigar_capacity, cigar_into, cigar_string, diagonal_cigar, diagonal_into, EditPath
 
 
 struct EditSpace(Movable):
@@ -248,7 +249,6 @@ def forced_distance(
     return swept_whole(profile, space.tally, ENGINE_WIDE_FULL)
 
 
-@fieldwise_init
 struct EditCigar(Copyable, Movable, Writable):
     """The global edit distance between two sequences and an optimal alignment as a CIGAR string, the
     first sequence the reference: `=` a match, `X` a substitution (or `M` for either), `D` a base of the
@@ -256,6 +256,13 @@ struct EditCigar(Copyable, Movable, Writable):
 
     var distance: Int
     var cigar: String
+    var runs: List[UInt64]
+    """With `runs` asked of `edit_cigar`, the CIGAR's runs as numbers (see `cigar.run_of`) and no text."""
+
+    def __init__(out self, distance: Int, var cigar: String, var runs: List[UInt64] = List[UInt64]()):
+        self.distance = distance
+        self.cigar = cigar^
+        self.runs = runs^
 
     def take_cigar(deinit self) -> String:
         """The CIGAR, moved out rather than copied, the rest given up."""
@@ -272,11 +279,12 @@ def edit_cigar(
     eqx: Bool = True,
     ties: Ties = Ties.LEFT,
     max_memory: Int = Int.MAX,
+    runs: Bool = False,
 ) raises AlignmentError -> EditCigar:
     """The global edit distance between two sequences and an optimal alignment as a CIGAR string (see the
     overload taking an `EditSpace`)."""
     var space = EditSpace()
-    return edit_cigar(first, second, space, eqx, ties, max_memory)
+    return edit_cigar(first, second, space, eqx, ties, max_memory, runs)
 
 
 def edit_cigar(
@@ -286,6 +294,7 @@ def edit_cigar(
     eqx: Bool = True,
     ties: Ties = Ties.LEFT,
     max_memory: Int = Int.MAX,
+    runs: Bool = False,
 ) raises AlignmentError -> EditCigar:
     """The global edit distance between two sequences, and an optimal alignment as a CIGAR string, `=`
     and `X` for matches and substitutions, or with `eqx` false `M` for both (see `EditCigar`).
@@ -299,7 +308,8 @@ def edit_cigar(
     A band keeps its tiles' edges for the traceback within `max_memory` bytes, sweeping stretches again
     past that (see `band.retrace`): the same CIGAR, for one more sweep of the band, or a few under a cap
     far below the band's edges. The profile is `space`'s, kept from pair to pair as `edit_distance`
-    keeps it."""
+    keeps it. With `runs`, the CIGAR comes as its runs' numbers (`EditCigar.runs`), no text written or read
+    back."""
     # The search's rule places every edit as far right as it goes; over the reversed pair that is as far
     # left over the pair itself.
     var reverse = ties == Ties.LEFT
@@ -320,19 +330,31 @@ def edit_cigar(
     comptime if PROBES:
         started = space.tally.start()
     if not settled.banded:
+        var writer = CigarWriter(
+            0 if runs else cigar_capacity(profile.columns, profile.rows, settled.distance),
+            binary=runs,
+            runs_capacity=2 * settled.distance + 2,
+        )
+        diagonal_into(profile, space.traced, settled.distance, reverse, eqx, writer)
         comptime if PROBES:
-            var cigar = diagonal_cigar(profile, space.traced, settled.distance, reverse, eqx)
             space.tally.since(CIGAR_NS, started)
-            return EditCigar(settled.distance, cigar^)
-        else:
-            return EditCigar(settled.distance, diagonal_cigar(profile, space.traced, settled.distance, reverse, eqx))
+        return _edit_cigar(settled.distance, writer^, runs)
     var path = oriented(settled^, profile.columns, profile.rows, reverse)
+    var writer = CigarWriter(
+        0 if runs else cigar_capacity(len(first), len(second), path.distance),
+        binary=runs,
+        runs_capacity=2 * path.distance + 2,
+    )
+    cigar_into(first, second, path, eqx, writer)
     comptime if PROBES:
-        var cigar = cigar_string(first, second, path, eqx)
         space.tally.since(CIGAR_NS, started)
-        return EditCigar(path.distance, cigar^)
-    else:
-        return EditCigar(path.distance, cigar_string(first, second, path, eqx))
+    return _edit_cigar(path.distance, writer^, runs)
+
+
+def _edit_cigar(distance: Int, var writer: CigarWriter, runs: Bool) -> EditCigar:
+    if runs:
+        return EditCigar(distance, String(), writer^.finish_runs())
+    return EditCigar(distance, writer^.finish())
 
 
 def oriented(var settled: Settled, columns: Int, rows: Int, reverse: Bool) -> EditPath:

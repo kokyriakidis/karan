@@ -31,7 +31,7 @@ from .device_edit import MAX_PATTERN_WORDS, device_edit_distances
 from .edit_distance import edit_cigar, edit_distance
 from .edit_search import EditHit, edit_search
 from .errors import AlignmentError, ErrorKind
-from .cigar import cigar_matches, cigar_runs, reversed_list
+from .cigar import cigar_matches, cigar_runs, reversed_list, runs_of
 from .search import Hit, local_scores_by_lane
 from .scored import (
     FROM_EDGE,
@@ -375,11 +375,15 @@ struct Aligner(Movable):
         ties: Ties = Ties.LEFT,
         eqx: Bool = True,
         max_memory: Int = DEFAULT_MAX_MEMORY,
+        runs: Bool = False,
     ) raises AlignmentError -> Alignment:
         """`align` over the two sequences' bytes, through this aligner's memory: a caller holding its
-        sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call."""
+        sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call. The bytes may be
+        letters or the bases' 2-bit codes (0 `A`, 1 `C`, 2 `G`, 3 `T`; any other byte a symbol of its own), the
+        same alignment either way. With `runs`, the CIGAR comes as `Alignment.runs`, numbers (`cigar.run_of`),
+        `cigar` left empty: no text written and parsed back."""
         var found = aligned_within(
-            reference, query, costs, mode, band, Int.MAX, ties, eqx, max_memory // KEPT_BYTES, self.space
+            reference, query, costs, mode, band, Int.MAX, ties, eqx, max_memory // KEPT_BYTES, self.space, runs
         )
         if not aligned(found):
             raise outside(band)
@@ -751,10 +755,15 @@ def aligned_within(
     eqx: Bool,
     limit: Int,
     mut space: SearchSpace,
+    runs: Bool = False,
 ) raises AlignmentError -> Alignment:
-    """`aligned_within` through `space`'s searches, which a batch's worker keeps from pair to pair."""
+    """`aligned_within` through `space`'s searches, which a batch's worker keeps from pair to pair; with `runs`
+    the CIGAR as runs (`Alignment.runs`) whichever engine finds it."""
     if not mode.is_scored():
-        return least_costly(reference, query, costs, mode, band, max_cost, ties, eqx, limit, space)
+        var found = least_costly(reference, query, costs, mode, band, max_cost, ties, eqx, limit, space, runs)
+        if runs:
+            as_runs(found)
+        return found^
     if max_cost != Int.MAX:
         raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "a mode with a match score takes no cost cap")
     _ = penalties_of(costs)
@@ -762,7 +771,16 @@ def aligned_within(
     var best = best_scoring(reference, query, costs, mode, band, ties, eqx, limit)
     space.edit.tally.since(SCORED_NS, started)
     space.edit.tally.set(ENGINE, ENGINE_SCORED)
+    if runs:
+        as_runs(best)
     return best^
+
+
+def as_runs(mut found: Alignment):
+    """An alignment's CIGAR as runs, if it is still text."""
+    if len(found.runs) == 0 and found.cigar.byte_length() > 0:
+        found.runs = runs_of(found.cigar)
+        found.cigar = String()
 
 
 def swept_by_bits(costs: Costs, ends: EndsFree, band: Band, max_cost: Int, columns: Int, rows: Int) -> Bool:
@@ -803,10 +821,12 @@ def least_costly(
     eqx: Bool,
     limit: Int,
     mut space: SearchSpace,
+    runs: Bool = False,
 ) raises AlignmentError -> Alignment:
     """The least costly alignment with `mode`'s free ends, or `not_found()`: by the bit-parallel sweep
     where it serves the pair (see `swept_by_bits`), else by the wavefront, the same alignment at the same
-    costs, through `space`'s searches."""
+    costs, through `space`'s searches. With `runs` the sweep writes its CIGAR as runs (`Alignment.runs`);
+    the wavefront's stays text, which `aligned_within` turns."""
     var columns = len(reference)
     var rows = len(query)
     var ends = EndsFree.of(mode, columns, rows)
@@ -814,9 +834,11 @@ def least_costly(
         try:
             var scale = costs.unit_scale()
             if ends.first_begin == 0 and ends.first_end == 0:
-                var whole = edit_cigar(reference, query, space.edit, eqx, ties, kept_bytes(limit))
+                var whole = edit_cigar(reference, query, space.edit, eqx, ties, kept_bytes(limit), runs)
                 var cost = whole.distance * scale
-                return Alignment(cost, -cost, whole^.take_cigar(), 0, columns, 0, rows)
+                var whole_runs = whole.runs^
+                whole.runs = List[UInt64]()
+                return Alignment(cost, -cost, whole^.take_cigar(), 0, columns, 0, rows, whole_runs^)
             var started = space.edit.tally.start()
             var hit: EditHit
             if ends.first_end == 0:
@@ -834,9 +856,13 @@ def least_costly(
             else:
                 hit = edit_search(query, reference, ends.first_begin == 0, ties)
             space.edit.tally.since(SEARCH_NS, started)
-            var found = edit_cigar(reference[hit.start : hit.end], query, space.edit, eqx, ties, kept_bytes(limit))
+            var found = edit_cigar(
+                reference[hit.start : hit.end], query, space.edit, eqx, ties, kept_bytes(limit), runs
+            )
             var cost = found.distance * scale
-            return Alignment(cost, -cost, found^.take_cigar(), hit.start, hit.end, 0, rows)
+            var found_runs = found.runs^
+            found.runs = List[UInt64]()
+            return Alignment(cost, -cost, found^.take_cigar(), hit.start, hit.end, 0, rows, found_runs^)
         except error:
             if error.kind != ErrorKind.UNKNOWN_SYMBOL:
                 raise error

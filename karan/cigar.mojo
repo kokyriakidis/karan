@@ -154,6 +154,34 @@ def cigar_matches(first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], cigar: St
     return cigar_counts(first, second, cigar).matches
 
 
+@always_inline
+def run_of(letter: UInt8, length: Int) -> UInt64:
+    """A CIGAR run as one number: its length above eight bits, its letter (`=`, `X`, `I`, `D` or `M`, as the
+    text has it) below."""
+    return (UInt64(length) << 8) | UInt64(letter)
+
+
+@always_inline
+def run_letter(run: UInt64) -> UInt8:
+    return UInt8(run & 0xFF)
+
+
+@always_inline
+def run_length(run: UInt64) -> Int:
+    return Int(run >> 8)
+
+
+def runs_of(cigar: String) -> List[UInt64]:
+    """A CIGAR string's runs as numbers (see `run_of`)."""
+    var runs = cigar_runs(cigar)
+    var letters = runs[0].copy()
+    var lengths = runs[1].copy()
+    var out = List[UInt64](capacity=len(letters))
+    for index in range(len(letters)):
+        out.append(run_of(letters[index], lengths[index]))
+    return out^
+
+
 struct CigarWriter:
     """A CIGAR string written a run at a time into the string itself, its bytes reserved once, a run of the
     same letter as the last one joining it; each length's digits are written by hand, as formatting one
@@ -170,14 +198,20 @@ struct CigarWriter:
     """The letter of the run still being added to, zero before the first."""
     var length: Int
     """The length of that run so far."""
+    var binary: Bool
+    """Runs kept as numbers in `runs` (see `run_of`) rather than written as text."""
+    var runs: List[UInt64]
 
-    def __init__(out self, capacity: Int):
-        """Room for `capacity` bytes, which the caller bounds: nothing past it is checked."""
-        self.text = String(unsafe_uninit_length=max(capacity, 32))
+    def __init__(out self, capacity: Int, *, binary: Bool = False, runs_capacity: Int = 0):
+        """Room for `capacity` bytes, which the caller bounds: nothing past it is checked; with `binary`, no
+        text, the runs kept as numbers, `runs_capacity` of them reserved."""
+        self.binary = binary
+        self.text = String(unsafe_uninit_length=32 if binary else max(capacity, 32))
         self.out = self.text.unsafe_ptr_mut().unsafe_origin_cast[MutUntrackedOrigin]()
         self.used = 0
         self.letter = 0
         self.length = 0
+        self.runs = List[UInt64](capacity=runs_capacity if binary else 0)
 
     @inline(.always)
     def add(mut self, letter: UInt8, length: Int):
@@ -188,8 +222,13 @@ struct CigarWriter:
         self.length += length
 
     def flush(mut self):
-        """Writes the run being added to, if any, as its length's digits then its letter."""
+        """Writes the run being added to, if any, as its length's digits then its letter (or, binary, as a
+        number)."""
         if self.length == 0:
+            return
+        if self.binary:
+            self.runs.append(run_of(self.letter, self.length))
+            self.length = 0
             return
         var digits = 1
         var power = 10
@@ -205,6 +244,13 @@ struct CigarWriter:
             rest //= 10
         out[unsafe_offset=at + digits] = self.letter
         self.length = 0
+
+    def finish_runs(var self) -> List[UInt64]:
+        """The runs of a binary writer, its last run kept."""
+        self.flush()
+        var runs = List[UInt64]()
+        swap(runs, self.runs)
+        return runs^
 
     def finish(var self) -> String:
         """The CIGAR string, its last run written."""
