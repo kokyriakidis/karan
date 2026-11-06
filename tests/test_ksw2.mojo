@@ -11,7 +11,10 @@ sixty-four lanes wherever the band holds the whole matrix."""
 
 from std.testing import assert_equal, assert_true, TestSuite
 
-from karan.ksw2 import KswBuffers, KswResult, ksw_extd2
+from std.random import random_ui64, seed
+
+from karan.ksw2 import KSW_EZ_APPROX_MAX, KswBuffers, KswResult, ksw_extd2
+from karan.ksw2_lanes import LaneBuffers, ksw_lanes, touches_band
 
 
 def _code(c: UInt8) -> UInt8:
@@ -106,6 +109,134 @@ def test_wide_vectors_match_ksw2_unbanded() raises:
         assert_equal(_line[64](cases[i], buf, ez), expected[i], String("case ", i))
         checked += 1
     assert_true(checked > 100)
+
+
+def _draw(n: Int) -> Int:
+    return Int(random_ui64(0, UInt64(n - 1)))
+
+
+def _piece(n: Int, rate: Int) -> Tuple[List[UInt8], List[UInt8]]:
+    """A target with homopolymers and short repeats, and a query from it at `rate` edits per thousand."""
+    var t = List[UInt8]()
+    while len(t) < n:
+        var r = _draw(100)
+        if r < 15:
+            var c = UInt8(_draw(4))
+            for _ in range(2 + _draw(8)):
+                t.append(c)
+        elif r < 22:
+            var unit = List[UInt8]()
+            for _ in range(2 + _draw(4)):
+                unit.append(UInt8(_draw(4)))
+            for _ in range(2 + _draw(5)):
+                for u in unit:
+                    t.append(u)
+        else:
+            t.append(UInt8(_draw(4)))
+    var q = List[UInt8]()
+    for c in t:
+        var x = _draw(1000)
+        if x < rate // 3:
+            q.append(UInt8(_draw(4)))
+        elif x < 2 * rate // 3:
+            pass
+        elif x < rate:
+            q.append(c)
+            q.append(UInt8(_draw(4)))
+        else:
+            q.append(c)
+    if len(q) == 0:
+        q.append(0)
+    return (t^, q^)
+
+
+def test_lanes_match_ksw2() raises:
+    """`ksw_lanes` against `ksw_extd2` on 512 random pieces in batches of 32: identical with a band holding the
+    whole matrix, and in a band of the batch's length difference plus 32 wherever the path stays clear of it."""
+    seed(5)
+    var mat = List[Int8]()
+    for i in range(5):
+        for j in range(5):
+            mat.append(Int8(-1) if i == 4 or j == 4 else (Int8(2) if i == j else Int8(-4)))
+    var single = KswBuffers()
+    var ez = KswResult()
+    var lanes = LaneBuffers[32]()
+    var cigars = List[List[UInt32]]()
+    var clear = 0
+    for _ in range(16):
+        var ts = List[List[UInt8]]()
+        var qs = List[List[UInt8]]()
+        for _ in range(32):
+            var p = _piece(20 + _draw(600), [0, 20, 40, 80][_draw(4)])
+            ts.append(p[0].copy())
+            qs.append(p[1].copy())
+        var tp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var qp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var tn = List[Int]()
+        var qn = List[Int]()
+        var widest = 0
+        var w = 0
+        for k in range(32):
+            tp.append(ts[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            qp.append(qs[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            tn.append(len(ts[k]))
+            qn.append(len(qs[k]))
+            widest = max(widest, max(len(ts[k]), len(qs[k])))
+            w = max(w, abs(len(ts[k]) - len(qs[k])) + 32)
+        var want = List[List[UInt32]]()
+        for k in range(32):
+            ksw_extd2[64](
+                Span(qs[k]), Span(ts[k]), 5, Span(mat), 4, 2, 24, 1, -1, -1, -1, KSW_EZ_APPROX_MAX, single, ez
+            )
+            want.append(ez.cigar.copy())
+        ksw_lanes[32](tp, tn, qp, qn, 2, 4, 1, 4, 2, 24, 1, widest + 1, lanes, cigars)
+        for k in range(32):
+            if cigars[k] != want[k]:
+                var a = String()
+                for c in want[k]:
+                    a += String(Int(c >> 4), "MIDN"[byte=Int(c & 0xF)])
+                var b = String()
+                for c in cigars[k]:
+                    b += String(Int(c >> 4), "MIDN"[byte=Int(c & 0xF)])
+                var tt = String()
+                for c in ts[k]:
+                    tt += "ACGTN"[byte=Int(c)]
+                var qq = String()
+                for c in qs[k]:
+                    qq += "ACGTN"[byte=Int(c)]
+                assert_true(False, String("unbanded piece ", k, " t ", tt, " q ", qq, " ksw2 ", a, " lanes ", b))
+        ksw_lanes[32](tp, tn, qp, qn, 2, 4, 1, 4, 2, 24, 1, w, lanes, cigars)
+        for k in range(32):
+            if not touches_band(cigars[k], w, 8):
+                clear += 1
+                if cigars[k] != want[k]:
+                    var a = String()
+                    for c in want[k]:
+                        a += String(Int(c >> 4), "MIDN"[byte=Int(c & 0xF)])
+                    var b = String()
+                    for c in cigars[k]:
+                        b += String(Int(c >> 4), "MIDN"[byte=Int(c & 0xF)])
+                    assert_true(
+                        False,
+                        String(
+                            "banded piece ",
+                            k,
+                            " w ",
+                            w,
+                            " tlen ",
+                            len(ts[k]),
+                            " qlen ",
+                            len(qs[k]),
+                            " ksw2 ",
+                            a,
+                            " lanes ",
+                            b,
+                        ),
+                    )
+        # The kernel reads the letters through untracked pointers: keep them alive past it.
+        _ = len(ts)
+        _ = len(qs)
+    assert_true(clear > 400)
 
 
 def main() raises:

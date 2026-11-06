@@ -20,6 +20,9 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   band, Z-drop, end bonus, exact or approximate maximum, extension-only and reversed-CIGAR modes. Byte for byte with
   the C on 23,000 random cases (600 kept in `tests/data`, `pixi run test-ksw2`); with sixty-four-lane vectors it fills
   1 kbp gaps faster than the C's SSE (0.65 s against 1.34 s for 2,000).
+- `karan.ksw2_lanes`: the same global gap filling for a batch of pairs at once, a pair a lane: the cells, codes and
+  walk back of `ksw2`, so the same CIGARs wherever the band holds the alignment; twice as fast as `ksw2` on batches
+  of like pieces.
 
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
