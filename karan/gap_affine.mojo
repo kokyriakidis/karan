@@ -2903,6 +2903,27 @@ struct AffineExtension(Copyable, Movable, Writable):
     var dropped: Bool
 
 
+def front_top[pieces: Int](mut search: Wavefront[pieces], reward: Int, scale: Int) -> Tuple[Int, Int]:
+    """The best score any layer of the current front reaches, gaps' included, and its diagonal; `Int.MIN` for a
+    front reaching nothing. A point inside a gap is a cell an alignment passes, which KSW2's Z-drop weighs as it
+    does any other (`ksw_extd2` takes each anti-diagonal's best over all its states)."""
+    var slot = search.fronts.current
+    var cost = search.cost
+    var top = Int.MIN
+    var top_diagonal = 0
+    comptime for layer in range(layers_of[pieces]()):
+        var front = search.fronts.row(slot, layer)
+        for diagonal in range(search.fronts.lows[slot], search.fronts.highs[slot] + 1):
+            var column = Int(front[unsafe_offset=diagonal])
+            if column < 0:
+                continue
+            var value = reward * (2 * column - diagonal) - scale * cost
+            if value > top:
+                top = value
+                top_diagonal = diagonal
+    return (top, top_diagonal)
+
+
 def front_best[pieces: Int](mut search: Wavefront[pieces], reward: Int, scale: Int) -> Tuple[Int, Int, Int]:
     """The best score an extension's current front reaches, a match earning `reward` and its cost in units of
     `scale`, on its first diagonal to reach it, and that diagonal's column; `Int.MIN` for a front reaching
@@ -2951,9 +2972,13 @@ def extend[
     The search goes on while such an alignment could still both improve and come within `end_bonus` of
     the best stop, so one search serves the bonus.
 
-    A `zdrop` of zero or more gives up as WFA2-lib's Z-drop does: once the best score of a cost's front
-    lies more than `zdrop` plus `drop_extension` a diagonal between it and the best so far below that
-    best, in the costs' own units, the best so far stands.
+    A `zdrop` of zero or more gives up as KSW2's does: once every alignment the search is still growing
+    scores more than `zdrop` plus `drop_extension` a diagonal between it and the best so far below that best,
+    in the costs' own units, the best so far stands. The alignments still growing are those of the last
+    `window` costs, every layer's (`front_top`): one cost's front alone, as WFA2-lib gauges it, lies far below
+    them inside a long gap, where the best path runs in a gap layer, and at every cost the best path jumps over
+    between two edits, so it gave up where KSW2 never would (after 851 letters of an extension whose best path
+    never fell more than 54).
 
     With the match reward folded into the costs, an alignment of `i` and `j` letters costing `s`
     scores `(reward (i + j) - scale s) / 2`, and the front of each cost holds how far along `i + j`
@@ -2995,21 +3020,34 @@ def extend[
             2 * reward * shortest - threshold
         ) * Int128(cheapest) <= Int128(next) * Int128(scale * cheapest - reward)
 
+    # The last `window` + 1 costs' best scores over every layer, and their diagonals, for the Z-drop.
+    var ring = window + 1
+    var recent = List[Int](length=ring, fill=Int.MIN)
+    var recent_diagonal = List[Int](length=ring, fill=0)
+
     while True:
         var slot = search.fronts.current
         var cost = search.cost
         var reach = search.fronts.reach[slot]
-        if zdrop >= 0 and reach > Int.MIN // 4:
-            # The front's own best, and how far below the best so far it lies.
-            var found = front_best(search, reward, scale)
-            var top = found[0]
-            var top_diagonal = found[1]
-            if top > best:
-                best = top
-                best_cost = cost
-                best_column = found[2]
-                best_row = best_column - top_diagonal
-            elif top > Int.MIN and best - top > 2 * (
+        if zdrop >= 0:
+            var any_layer = front_top(search, reward, scale)
+            recent[cost % ring] = any_layer[0]
+            recent_diagonal[cost % ring] = any_layer[1]
+            if reach > Int.MIN // 4:
+                var found = front_best(search, reward, scale)
+                if found[0] > best:
+                    best = found[0]
+                    best_cost = cost
+                    best_column = found[2]
+                    best_row = best_column - found[1]
+            # How far below the best so far every alignment still growing lies.
+            var top = Int.MIN
+            var top_diagonal = 0
+            for k in range(ring):
+                if recent[k] > top:
+                    top = recent[k]
+                    top_diagonal = recent_diagonal[k]
+            if top > Int.MIN and best - top > 2 * (
                 zdrop + drop_extension * abs(top_diagonal - (best_column - best_row))
             ):
                 dropped = True

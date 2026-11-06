@@ -19,7 +19,9 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
   kinds, as WFA2-lib's ends-free and extension and abPOA's local: any free ends, with the presets
   global, infix, prefix, suffix and overlap, and a reward for every match when asked; an extension
-  from either end with an optional Z-drop and end bonus; and local.
+  from either end with an optional Z-drop and end bonus; and local. The Z-drop weighs every alignment
+  still growing, those inside a gap too, over the last move's worth of costs, as KSW2 does, rather than one
+  cost's aligned front as WFA2-lib does, which gave up far earlier than minimap2 on noisy reads.
 - Unit costs by A\*PA2's bit-parallel band doubling with its seed heuristic, near-identical pairs by
   diagonal transition first; every other cost model by a gap-affine wavefront, one search alone while it
   steps fewer diagonals than two would, as it measures them, then from both ends after BiWFA, the

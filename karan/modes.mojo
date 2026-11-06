@@ -322,9 +322,10 @@ struct Mode(Equatable, ImplicitlyCopyable, TrivialRegisterPassable, Writable):
 
         Exact by default: the best stop of all. With `zdrop`, minimap2's `-z` and KSW2's Z-drop, the
         search gives up once every alignment it is growing scores more than `zdrop`, plus a gap
-        extension a diagonal between them, below the best so far, as WFA2-lib's Z-drop gauges it a cost
-        at a time, and the best stop it found stands: a heuristic, faster on a seed whose read turns to
-        noise, which may miss a better stop past a divergent stretch.
+        extension a diagonal between them, below the best so far, as KSW2 gauges it (every alignment
+        still growing, those inside a gap too, not one cost's front as WFA2-lib's does), and the best stop
+        it found stands: a heuristic, faster on a seed whose read turns to noise, which may miss a better
+        stop past a divergent stretch.
 
         With `end_bonus`, KSW2's and minimap2's `--end-bonus`, BWA-MEM's clipping penalty, an extension
         that reaches the query's far end is preferred whenever its score plus the bonus passes the best
