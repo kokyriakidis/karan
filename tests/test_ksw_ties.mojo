@@ -156,5 +156,67 @@ def test_api_ties_ksw2() raises:
     assert_equal(ext.cigar, "3=1D1X12=")
 
 
+def test_band_gives_the_whole_matrixs_alignment() raises:
+    """Searched about any path, widened as its walk nears the edge, KSW2's rule gives the alignment the whole
+    matrix gives: 1,200 random pairs with repeats, at unit, linear, affine and two-piece costs, deletions priced
+    apart too, guided by either of karan's other rules."""
+    seed(29)
+    var models = List[Costs]()
+    models.append(Costs.edit())
+    models.append(Costs.linear(3, 2))
+    models.append(Costs.affine(4, 6, 2))
+    models.append(Costs.two_piece(4, 4, 2, 24, 1))
+    models.append(Costs.two_piece(12, 8, 6, 48, 4))
+    models.append(Costs.affine(4, 6, 2).with_deletions(5, 1))
+    var buf = TieBuffers()
+    for k in range(1200):
+        var p = _piece(1 + _draw(400), [0, 20, 60, 150, 300][_draw(5)])
+        var t = p[0].copy()
+        var q = p[1].copy()
+        var costs = models[k % len(models)]
+        var guide = align(
+            String(unsafe_from_utf8=t),
+            String(unsafe_from_utf8=q),
+            costs,
+            Mode.GLOBAL,
+            ties=Ties.RIGHT if k % 2 == 0 else Ties.LEFT,
+        )
+        var g = runs_of(guide.cigar)
+        var banded = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf))
+        var whole = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=max(len(t), len(q))))
+        assert_equal(banded, whole, String("pair ", k, " costs model ", k % len(models)))
+
+
+def test_anti_diagonals_match_rows() raises:
+    """The vectorized sweep by anti-diagonal and the row sweep it replaces write the same CIGAR: 1,500 random
+    pairs at every cost model, narrow and wide bands, guided by either other rule."""
+    seed(41)
+    var models = List[Costs]()
+    models.append(Costs.edit())
+    models.append(Costs.linear(3, 2))
+    models.append(Costs.affine(4, 6, 2))
+    models.append(Costs.two_piece(4, 4, 2, 24, 1))
+    models.append(Costs.two_piece(12, 8, 6, 48, 4))
+    models.append(Costs.affine(4, 6, 2).with_deletions(5, 1))
+    var buf = TieBuffers()
+    for k in range(1500):
+        var p = _piece(1 + _draw(700), [0, 20, 60, 150, 300][_draw(5)])
+        var t = p[0].copy()
+        var q = p[1].copy()
+        var costs = models[k % len(models)]
+        var guide = align(
+            String(unsafe_from_utf8=t),
+            String(unsafe_from_utf8=q),
+            costs,
+            Mode.GLOBAL,
+            ties=Ties.RIGHT if k % 2 == 0 else Ties.LEFT,
+        )
+        var g = runs_of(guide.cigar)
+        var width = [1, 4, 32, 1000][k % 4]
+        var rows = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=width, by_rows=True))
+        var diagonals = _text(ksw_cigar(Span(t), Span(q), costs, Span(g), buf, start_width=width))
+        assert_equal(diagonals, rows, String("pair ", k, " model ", k % len(models), " width ", width))
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

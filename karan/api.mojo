@@ -765,7 +765,7 @@ def aligned_within(
     if not mode.is_scored():
         var found = least_costly(reference, query, costs, mode, band, max_cost, engine_ties, eqx, limit, space, runs)
         if ties == Ties.KSW2:
-            ksw_rewrite(found, reference, query, costs, eqx, runs, band)
+            ksw_rewrite(found, reference, query, costs, eqx, runs, space.ties, band)
         if runs:
             as_runs(found)
         return found^
@@ -784,6 +784,7 @@ def aligned_within(
             rewarded_costs(costs, mode.match_score),
             eqx,
             runs,
+            space.ties,
             band,
             mode.match_score,
             mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,
@@ -820,6 +821,7 @@ def ksw_rewrite(
     costs: Costs,
     eqx: Bool,
     runs: Bool,
+    mut buf: TieBuffers,
     band: Band = Band(),
     reward: Int = 0,
     from_end: Bool = False,
@@ -830,7 +832,6 @@ def ksw_rewrite(
     if found.reference_end <= found.reference_start and found.query_end <= found.query_start:
         return
     var guide = found.runs.copy() if len(found.runs) > 0 else runs_of(found.cigar)
-    var buf = TieBuffers()
     # The band's diagonals as the span's own cells read them, `i - j` at reference letter `i` and query letter
     # `j` of the span: counted from the start of both sequences, or for an extension fixed at their ends, from
     # there (`Band.mirrored`).
@@ -1839,6 +1840,7 @@ def capped_alignments(
                         rewarded_costs(costs, mode.match_score) if mode.is_scored() else costs,
                         eqx,
                         False,
+                        space.ties,
                         band,
                         mode.match_score if mode.is_scored() else 0,
                         mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,

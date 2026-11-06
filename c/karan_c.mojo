@@ -814,6 +814,7 @@ def alignments_part(
                         ) if wanted_mode.is_scored() else wanted_costs,
                         asked.eqx,
                         False,
+                        space.ties,
                         asked.band,
                         wanted_mode.match_score if wanted_mode.is_scored() else 0,
                         wanted_mode.kind == Mode.EXTENSION and wanted_mode.anchor == Anchor.END,

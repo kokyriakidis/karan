@@ -69,6 +69,7 @@ from .bit_parallel import append_moves, DIAGONAL, LEFT, UP
 from .substitutions import uniform_pair
 from .edit_distance import EditSpace
 from .errors import AlignmentError, ErrorKind
+from .ksw_ties import TieBuffers
 from .modes import Anchor, Band, Costs, Ties, Mode
 from .slides import GATHERED_SLIDES, gathered_slides, slide
 from .traceback import cigar_string, EditPath, ordered_cigar
@@ -1912,6 +1913,8 @@ struct SearchSpace(Movable):
     """The memory a unit-cost pair's edit distance takes, kept the same way."""
     var moves: List[UInt8]
     """A global alignment's moves (see `cigar_within`), kept the same way."""
+    var ties: TieBuffers
+    """The memory `Ties.KSW2`'s writing again takes (see `ksw_ties`), kept the same way."""
 
     def __init__(out self):
         """No searches yet: the first pair builds them."""
@@ -1923,6 +1926,7 @@ struct SearchSpace(Movable):
         self.penalties = None
         self.edit = EditSpace()
         self.moves = List[UInt8]()
+        self.ties = TieBuffers()
 
     def penalties_for(mut self, costs: Costs) raises AlignmentError -> Penalties:
         """`penalties_of(costs)`, worked out once for a batch's costs and not again for each pair: their
