@@ -50,7 +50,11 @@ whichever the meeting of the two searches happened to give: once they have prove
 search from the far end grows on to it, pruned by what the other side kept to the few diagonals an
 optimal path passes, and the path is traced back from its end by WFA2-lib's rule. Run from the
 corner, that is WFA2-lib's own CIGAR, indels placed right; run from the origin over both sequences
-reversed, indels placed left, as minimap2, KSW2 and abPOA place them, the default.
+reversed, indels placed left. KSW2's rule (`Ties.KSW2`, the default, minimap2's and plegma's) is a rule of
+cells, which a front's furthest reach does not decide; so the forward search keeps its gap layers' columns
+too, grows on keeping every front any optimal path passes (see `Wavefront.prune_optimal`), and is walked
+back from the corner cell by cell, each test one front's reach (see `ksw2_trace`). A pair split for its
+memory, or swept instead, takes WFA2-lib's path, which `ksw_ties` writes again.
 
 For an alignment both searches keep, of every cost, the alignment front's columns and a byte of
 which source won each layer (see `History`), five bytes a diagonal where WFA's high-memory mode
@@ -72,7 +76,7 @@ from .errors import AlignmentError, ErrorKind
 from .ksw_ties import TieBuffers
 from .modes import Anchor, Band, Costs, Ties, Mode
 from .slides import GATHERED_SLIDES, gathered_slides, slide
-from .traceback import cigar_string, EditPath, ordered_cigar
+from .traceback import cigar_string, EditPath, matched_back, ordered_cigar
 from .diagonal import GIVE_UP_SHARE
 from .differences import difference_bits, path_bytes, swept_cost, swept_path
 from .probes import (
@@ -539,6 +543,12 @@ struct History(Movable):
     var highs: List[Int]
     var columns: List[List[Int32]]
     var flags: List[List[UInt8]]
+    var gaps: List[List[Int32]]
+    """With `gap_layers`, each block's gap layers' columns beside its alignment ones, layer `g`'s from
+    `(g - 1) * len(columns[block])`: what KSW2's walk reads (see `ksw2_trace`). A block of these takes
+    `gap_layers` times its alignment block."""
+    var gap_layers: Int
+    """The gap layers kept a diagonal, none unless asked (see `reset`)."""
     var filled: Int
     """The blocks in use, the first of `columns`; those after are a batch's earlier pairs', kept for the next."""
     var used: Int
@@ -558,6 +568,8 @@ struct History(Movable):
         self.highs = List[Int]()
         self.columns = List[List[Int32]]()
         self.flags = List[List[UInt8]]()
+        self.gaps = List[List[Int32]]()
+        self.gap_layers = 0
         self.filled = 0
         self.used = 0
         self.kept = 0
@@ -565,9 +577,11 @@ struct History(Movable):
         self.pending_start = 0
         self.pending_low = 0
 
-    def reset(mut self, capacity: Int):
+    def reset(mut self, capacity: Int, gap_layers: Int = 0):
         """As new, its first block to hold `capacity` diagonals, the blocks it holds kept for the costs
-        to come: a batch's worker then takes no memory for a pair's kept fronts once it is warm."""
+        to come: a batch's worker then takes no memory for a pair's kept fronts once it is warm. With
+        `gap_layers`, each cost's gap layers' columns are kept too (see `keep_gaps`)."""
+        self.gap_layers = gap_layers
         self.starts.clear()
         self.lows.clear()
         self.highs.clear()
@@ -591,9 +605,14 @@ struct History(Movable):
                 if self.filled == len(self.columns):
                     self.columns.append(block^)
                     self.flags.append(block_flags^)
+                    self.gaps.append(List[Int32]())
                 else:
                     self.columns[self.filled] = block^
                     self.flags[self.filled] = block_flags^
+            # The gap layers' room beside the block, made the first time a search keeping them reaches it.
+            var gap_size = self.gap_layers * len(self.columns[self.filled])
+            if len(self.gaps[self.filled]) < gap_size:
+                self.gaps[self.filled].resize(unsafe_uninit_length=gap_size)
             self.filled += 1
             self.used = 0
             self.next_block = min(2 * self.next_block, HISTORY_BLOCK)
@@ -617,6 +636,19 @@ struct History(Movable):
         self.used = self.pending_start + high - self.pending_low + 1
         self.kept += high - low + 1
 
+    def keep_gaps[layers: Int](mut self, mut fronts: Fronts[layers], slot: Int, low: Int, high: Int):
+        """The gap layers of `slot`'s fronts on `low ..= high`, the room `begin` made, kept beside its
+        alignment columns, when this history keeps them; before `finish`."""
+        if self.gap_layers == 0 or low > high:
+            return
+        var last = self.filled - 1
+        var size = len(self.columns[last])
+        var room = self.gaps[last].unsafe_ptr().unsafe_offset(self.pending_start - self.pending_low)
+        for layer in range(1, self.gap_layers + 1):
+            Span(unsafe_ptr=room.unsafe_offset((layer - 1) * size + low), length=high - low + 1).copy_from(
+                Span(unsafe_ptr=fronts.row(slot, layer).unsafe_offset(low), length=high - low + 1)
+            )
+
     def skip(mut self):
         """The next cost reached nothing."""
         self.starts.append(0)
@@ -630,6 +662,17 @@ struct History(Movable):
             return Int(UNREACHED)
         var start = self.starts[cost]
         return Int(self.columns[start >> BLOCK_SHIFT][(start & BLOCK_MASK) + diagonal - self.lows[cost]])
+
+    @inline(.always)
+    def gap_column(self, layer: Int, cost: Int, diagonal: Int) -> Int:
+        """Gap layer `layer`'s furthest column on `diagonal` at `cost`, or `UNREACHED`; kept only with
+        `gap_layers`."""
+        if cost < 0 or cost >= len(self.lows) or diagonal < self.lows[cost] or diagonal > self.highs[cost]:
+            return Int(UNREACHED)
+        var start = self.starts[cost]
+        var block = start >> BLOCK_SHIFT
+        var size = len(self.columns[block])
+        return Int(self.gaps[block][(layer - 1) * size + (start & BLOCK_MASK) + diagonal - self.lows[cost]])
 
     @inline(.always)
     def flag(self, cost: Int, diagonal: Int) -> UInt8:
@@ -725,6 +768,11 @@ struct Fronts[layers: Int](Movable):
     var highs: OwnLines
     var reach: OwnLines
     """Each slot's furthest anti-diagonal, `2 column - diagonal`, over its alignment front."""
+    var dirty_lows: OwnLines
+    """The diagonals each slot has held anything on since it was last cleared, `dirty_lows ..= dirty_highs`,
+    a lane group and a diagonal either side: all a pair's search wrote there, so the next pair's `reset`
+    clears just these and keeps the rows as wide as they grew."""
+    var dirty_highs: OwnLines
     var least: Int
     """The diagonals a front may ever read: the matrix's and two either side, and a lane group past."""
     var most: Int
@@ -743,22 +791,37 @@ struct Fronts[layers: Int](Movable):
         self.lows = OwnLines(slots, 1)
         self.highs = OwnLines(slots, 0)
         self.reach = OwnLines(slots, Int.MIN // 2)
+        self.dirty_lows = OwnLines(slots, 1)
+        self.dirty_highs = OwnLines(slots, 0)
 
     def reset(mut self, slots: Int, columns: Int, rows: Int):
-        """As new for `slots` costs over a `columns` by `rows` matrix, the memory the rings held kept."""
-        self.slots = slots
+        """As new for `slots` costs over a `columns` by `rows` matrix, the memory the rings held kept. With
+        as many slots as before the rows keep their width, only what the last pair wrote cleared: a batch's
+        pairs had each grown the rows from narrow again, every doubling copying them, an eighth of a 1 kbp
+        pair's time at two-piece costs."""
         self.current = 0
         self.least = -rows - 2
         self.most = columns + LANES + 2
-        self.width = 4 * LANES
-        self.stride = self.width + ROW_PADDING
-        self.base = self.width // 2
-        var size = Self.layers * slots * self.stride
-        self.buffer.resize(unsafe_uninit_length=size)
-        unreach(self.buffer.unsafe_ptr(), size)
+        if slots == self.slots and len(self.buffer) == Self.layers * slots * self.stride:
+            for slot in range(slots):
+                var low = max(self.dirty_lows[slot], -self.base)
+                var high = min(self.dirty_highs[slot], self.width - 1 - self.base)
+                if low <= high:
+                    comptime for layer in range(Self.layers):
+                        unreach(self.row(slot, layer).unsafe_offset(low), high - low + 1)
+        else:
+            self.slots = slots
+            self.width = 4 * LANES
+            self.stride = self.width + ROW_PADDING
+            self.base = self.width // 2
+            var size = Self.layers * slots * self.stride
+            self.buffer.resize(unsafe_uninit_length=size)
+            unreach(self.buffer.unsafe_ptr(), size)
         self.lows.reset(slots, 1)
         self.highs.reset(slots, 0)
         self.reach.reset(slots, Int.MIN // 2)
+        self.dirty_lows.reset(slots, 1)
+        self.dirty_highs.reset(slots, 0)
 
     @inline(.always)
     def back(self, lag: Int) -> Int:
@@ -826,6 +889,15 @@ struct Fronts[layers: Int](Movable):
                     values[unsafe_offset=diagonal] = UNREACHED
         self.lows[slot] = low
         self.highs[slot] = high
+        if low <= high:
+            # What the step may write: whole lane groups from `low`, and a lane group past `high` cleared.
+            var dirty_low = low - 1
+            var dirty_high = high + 2 * LANES + 1
+            if self.dirty_lows[slot] <= self.dirty_highs[slot]:
+                dirty_low = min(dirty_low, self.dirty_lows[slot])
+                dirty_high = max(dirty_high, self.dirty_highs[slot])
+            self.dirty_lows[slot] = dirty_low
+            self.dirty_highs[slot] = dirty_high
 
 
 @inline(.never)
@@ -986,6 +1058,97 @@ comptime SEARCH_SWEPT_NS = 5
 """The slots of a `Wavefront`'s probes (see `Wavefront.probe`)."""
 
 
+struct BackReach(Movable):
+    """A search's kept alignment fronts as the furthest column each diagonal reached at any cost up to each:
+    where it reached at that cost or less, which an exact cost's front alone does not tell, a cost reaching
+    no cell of a diagonal it passed through on the way."""
+
+    var starts: List[Int]
+    var lows: List[Int]
+    var highs: List[Int]
+    var columns: List[Int32]
+
+    def __init__(out self):
+        self.starts = List[Int]()
+        self.lows = List[Int]()
+        self.highs = List[Int]()
+        self.columns = List[Int32]()
+
+    def build(mut self, history: History):
+        """These reaches from `history`'s kept fronts, every cost it kept."""
+        self.starts.clear()
+        self.lows.clear()
+        self.highs.clear()
+        self.columns.clear()
+        var low = 1
+        var high = 0
+        var previous = 0
+        for cost in range(len(history.lows)):
+            var kept_low = history.lows[cost]
+            var kept_high = history.highs[cost]
+            var new_low = low
+            var new_high = high
+            if kept_low <= kept_high:
+                new_low = kept_low if low > high else min(low, kept_low)
+                new_high = kept_high if low > high else max(high, kept_high)
+            var start = len(self.columns)
+            self.starts.append(start)
+            self.lows.append(new_low)
+            self.highs.append(new_high)
+            if new_low <= new_high:
+                self.columns.resize(start + new_high - new_low + 1, UNREACHED)
+                var out = self.columns.unsafe_ptr().unsafe_offset(start - new_low)
+                if low <= high:
+                    # Two stretches of the same list, apart: one after the other in it.
+                    var base = self.columns.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+                    Span(unsafe_ptr=base.unsafe_offset(start - new_low + low), length=high - low + 1).copy_from(
+                        Span(unsafe_ptr=base.unsafe_offset(previous), length=high - low + 1)
+                    )
+                if kept_low <= kept_high:
+                    var block_start = history.starts[cost]
+                    var kept = (
+                        history.columns[block_start >> BLOCK_SHIFT]
+                        .unsafe_ptr()
+                        .unsafe_offset((block_start & BLOCK_MASK) - kept_low)
+                    )
+                    comptime Lanes = SIMD[DType.int32, LANES]
+                    var diagonal = kept_low
+                    while diagonal + LANES <= kept_high + 1:
+                        var at = out.unsafe_offset(diagonal)
+                        at.unsafe_store(
+                            max(at.unsafe_load[width=LANES](), kept.unsafe_offset(diagonal).unsafe_load[width=LANES]())
+                        )
+                        diagonal += LANES
+                    while diagonal <= kept_high:
+                        out[unsafe_offset=diagonal] = max(out[unsafe_offset=diagonal], kept[unsafe_offset=diagonal])
+                        diagonal += 1
+            low = new_low
+            high = new_high
+            previous = start
+
+    @always_inline
+    def costs(self) -> Int:
+        """The costs these reaches cover, `0 ..< costs()`."""
+        return len(self.lows)
+
+    @always_inline
+    def row(self, cost: Int) -> ImmPointer[Int32, ImmUntrackedOrigin]:
+        """The reaches of `cost` indexed by diagonal, `lows[cost] ..= highs[cost]` of them."""
+        return (
+            self.columns.unsafe_ptr()
+            .as_imm()
+            .unsafe_origin_cast[ImmUntrackedOrigin]()
+            .unsafe_offset(self.starts[cost] - self.lows[cost])
+        )
+
+    @always_inline
+    def at(self, cost: Int, diagonal: Int) -> Int:
+        """The furthest column `diagonal` reached at `cost` or less, or `UNREACHED`."""
+        if diagonal < self.lows[cost] or diagonal > self.highs[cost]:
+            return Int(UNREACHED)
+        return Int(self.columns[self.starts[cost] + diagonal - self.lows[cost]])
+
+
 struct Wavefront[pieces: Int](Movable):
     """One direction's search over two encoded sequences: the fronts of each cost in turn, from cost
     zero at the origin, and, for the costs grown recording, what the traceback needs of each (see
@@ -1017,6 +1180,11 @@ struct Wavefront[pieces: Int](Movable):
     var stepped: List[Int]
     """`traced_alone`'s diagonals stepped through each cost, kept from pair to pair: a list a pair had been
     one of a short read's two allocations."""
+    var walked: Bool
+    """Whether this pair's path was walked by KSW2's rule through these fronts (see `ksw2_trace`), which
+    `start` clears."""
+    var back_reach: BackReach
+    """The other search's fronts as `prune_optimal` reads them, kept from pair to pair."""
     var probe: ProbeCounts
     """In a build with probes (see `probes`), over every pair since they were last read (`start` keeps them,
     unlike `work`): cost steps grown, diagonals stepped, meeting checks against the other search, splits for the
@@ -1033,10 +1201,11 @@ struct Wavefront[pieces: Int](Movable):
         free_first: Int = 0,
         free_second: Int = 0,
         band: Band = Band(),
+        gaps: Bool = False,
     ):
         """The fronts of cost zero over two encoded sequences, both back to front with `reverse`: the
-        matches from the origin, unless its first move must open a gap, kept with `record`. Both
-        sequences must hold a letter.
+        matches from the origin, unless its first move must open a gap, kept with `record`, and with
+        `gaps` the gap layers' columns too (see `History.gap_layers`). Both sequences must hold a letter.
 
         With up to `free_first` letters of the first sequence or `free_second` of the second left
         unaligned at the origin's end for nothing, cost zero holds every diagonal such a start lies
@@ -1052,13 +1221,15 @@ struct Wavefront[pieces: Int](Movable):
         self.band_high = 0
         self.last_reached = 0
         self.stepped = List[Int]()
+        self.walked = False
+        self.back_reach = BackReach()
         self.fronts = Fronts[layers_of[Self.pieces]()](penalties.window[Self.pieces]() + 1, len(first), len(second))
         self.history = History(0)
         self.cost = 0
         self.work = 0
         self.furthest = Int.MIN // 2
         self.probe = ProbeCounts()
-        self.start(first, second, penalties, origin, record, reverse, free_first, free_second, band)
+        self.start(first, second, penalties, origin, record, reverse, free_first, free_second, band, gaps)
 
     def start(
         mut self,
@@ -1071,11 +1242,13 @@ struct Wavefront[pieces: Int](Movable):
         free_first: Int = 0,
         free_second: Int = 0,
         band: Band = Band(),
+        gaps: Bool = False,
     ):
         """This search begun afresh over a new pair, as `__init__` begins one, the memory its sequences
         and rings held kept for the next pair of a batch (see `SearchSpace`)."""
         self.columns = len(first)
         self.rows = len(second)
+        self.walked = False
         padded_into(self.first, first, FIRST_SENTINEL, reverse, LINE_GUARD)
         padded_into(self.second, second, SECOND_SENTINEL, reverse, LINE_GUARD)
         self.penalties = penalties
@@ -1087,7 +1260,8 @@ struct Wavefront[pieces: Int](Movable):
         self.fronts.reset(penalties.window[Self.pieces]() + 1, self.columns, self.rows)
         # A search keeps a few diagonals a letter on close pairs, so its lists rarely grow on them.
         self.history.reset(
-            min(HISTORY_KEPT_PER_LETTER * (self.columns + self.rows), HISTORY_LIMIT // 2) if record else 0
+            min(HISTORY_KEPT_PER_LETTER * (self.columns + self.rows), HISTORY_LIMIT // 2) if record else 0,
+            2 * Self.pieces if record and gaps else 0,
         )
         self.cost = 0
         self.work = 0
@@ -1098,6 +1272,7 @@ struct Wavefront[pieces: Int](Movable):
             # fronts still hold the origin at column zero, where that gap's walk back ends.
             if record:
                 self.history.begin(0, 0)[0][unsafe_offset=0] = 0
+                self.history.keep_gaps(self.fronts, 0, 0, 0)
                 self.history.finish(0, 0)
             return
         var low = max(-min(free_second, self.rows), self.band_low)
@@ -1131,6 +1306,7 @@ struct Wavefront[pieces: Int](Movable):
         self.fronts.reach[0] = reach
         self.furthest = reach
         if record:
+            self.history.keep_gaps(self.fronts, 0, low, high)
             self.history.finish(low, high)
 
     @always_inline
@@ -1280,6 +1456,9 @@ struct Wavefront[pieces: Int](Movable):
                 reach = max(reach, 2 * column - opened)
                 comptime if record:
                     kept[unsafe_offset=opened] = Int32(column)
+        comptime if record:
+            if self.history.gap_layers > 0:
+                self.history.keep_gaps(self.fronts, slot, low, high)
         self.fronts.reach[slot] = reach
         self.furthest = max(self.furthest, reach)
         self.work += high - low + 1
@@ -1395,6 +1574,70 @@ struct Wavefront[pieces: Int](Movable):
                 comptime for layer in range(layers_of[Self.pieces]()):
                     var values = self.fronts.row(slot, layer).unsafe_offset(diagonal)
                     values.unsafe_store(live.select(values.unsafe_load[width=LANES](), Lanes(UNREACHED)))
+            diagonal += LANES
+        if kept_low > kept_high:
+            self.fronts.lows[slot] = 1
+            self.fronts.highs[slot] = 0
+            return
+        self.fronts.lows[slot] = kept_low
+        self.fronts.highs[slot] = kept_high
+
+    def prune_optimal(mut self, slot: Int, cost: Int, reach: BackReach, total: Int):
+        """Unreaches, layer by layer, every front of `cost`, in `slot`, that no path costing `total` can
+        pass, as `reach` tells of the other side: a front's furthest cell is the cheapest to finish from on
+        its diagonal, costs never rising toward the corner, so a path passes the front only if the other
+        side reaches that cell at the rest of `total`, or that and the layer's opening for a gap it goes
+        on with. Every front any optimal path passes is left, at its own value, which KSW2's walk needs
+        (see `ksw2_trace`) where `prune` keeps only those WFA2-lib's backtrace passes; a cost the other
+        side never grew to prunes nothing."""
+        var low = self.fronts.lows[slot]
+        var high = self.fronts.highs[slot]
+        var rest = total - cost
+        if low > high or rest < 0:
+            return
+        var target = self.columns - self.rows
+        var kept_low = Int.MAX
+        var kept_high = Int.MIN
+        comptime layers = layers_of[Self.pieces]()
+        comptime Lanes = SIMD[DType.int32, LANES]
+        var lanes = Lanes()
+        comptime for lane in range(LANES):
+            lanes[lane] = Int32(lane)
+        var needed = Lanes(Int32(self.columns))
+        var unreached = Lanes(UNREACHED)
+        # Each layer's cost back on the other side, and its reaches as a row by diagonal, or none past them.
+        var backs = Array[Int, layers_of[MAX_PIECES]()](fill=-1)
+        comptime for layer in range(layers):
+            var back = rest if layer == ALIGNED else rest + self.penalties.opening_of(layer)
+            backs[layer] = back if back < reach.costs() else -1
+        # A lane group at a time; the slot has room for one past `high`, which reads unreached.
+        var diagonal = low
+        while diagonal <= high:
+            var inside = (lanes + Int32(diagonal)).le(Lanes(Int32(high)))
+            var live_any = SIMD[DType.bool, LANES](fill=False)
+            # Lane `i` meets the other side's diagonal `target - diagonal - i`, a reversed run of its row.
+            var first = target - diagonal - (LANES - 1)
+            var final = target - diagonal
+            comptime for layer in range(layers):
+                var row = self.fronts.row(slot, layer).unsafe_offset(diagonal)
+                var columns = row.unsafe_load[width=LANES]()
+                var live = columns.ge(Lanes(0)) & inside
+                var back_cost = backs[layer]
+                if back_cost >= 0:
+                    var back: Lanes
+                    if reach.lows[back_cost] <= first and final <= reach.highs[back_cost]:
+                        back = reach.row(back_cost).unsafe_offset(first).unsafe_load[width=LANES]().reversed()
+                    else:
+                        back = unreached
+                        comptime for lane in range(LANES):
+                            back[lane] = Int32(reach.at(back_cost, final - lane))
+                    live &= (columns + back).ge(needed)
+                if not live.reduce_and():
+                    row.unsafe_store(live.select(columns, unreached))
+                live_any |= live
+            if live_any.reduce_or():
+                kept_low = min(kept_low, diagonal + Int(live_any.select(lanes, Lanes(LANES)).reduce_min()))
+                kept_high = diagonal + Int(live_any.select(lanes, Lanes(-1)).reduce_max())
             diagonal += LANES
         if kept_low > kept_high:
             self.fronts.lows[slot] = 1
@@ -1803,12 +2046,15 @@ def begun[
     free_first: Int = 0,
     free_second: Int = 0,
     band: Band = Band(),
+    gaps: Bool = False,
 ):
     """`search` begun over a new pair as `Wavefront.start` begins it, or built the first time."""
     if search:
-        search.value().start(first, second, penalties, origin, record, reverse, free_first, free_second, band)
+        search.value().start(first, second, penalties, origin, record, reverse, free_first, free_second, band, gaps)
     else:
-        search = Wavefront[pieces](first, second, penalties, origin, record, reverse, free_first, free_second, band)
+        search = Wavefront[pieces](
+            first, second, penalties, origin, record, reverse, free_first, free_second, band, gaps
+        )
 
 
 comptime GROWING = -2
@@ -1844,10 +2090,13 @@ def alone[pieces: Int, record: Bool = False](mut search: Wavefront[pieces], ceil
 
 def traced_alone[
     pieces: Int
-](mut search: Wavefront[pieces], ceiling: Int, mirrored: Bool, limit: Int, mut moves: List[UInt8]) -> Int:
+](
+    mut search: Wavefront[pieces], ceiling: Int, mirrored: Bool, limit: Int, mut moves: List[UInt8], ksw2: Bool = False
+) -> Int:
     """The search `canonical` would trace grown by itself, its fronts kept, and traced back from the end
     the moment it reaches it, as `canonical` traces it, appending the moves right to left; with
-    `mirrored` the search is the backward one. The cost, -1 past `ceiling`, or `GROWING`, nothing
+    `mirrored` the search is the backward one, and with `ksw2` the forward one walked by KSW2's rule (see
+    `walk_ksw2`). The cost, -1 past `ceiling`, or `GROWING`, nothing
     appended, once the two searches would finish the pair for less.
 
     The two must each grow past half the cost and a margin, the dearest opening and `window`, before
@@ -1884,7 +2133,10 @@ def traced_alone[
             if Int(search.fronts.row(slot, ALIGNED)[unsafe_offset=target]) >= columns:
                 if search.cost > ceiling:
                     return -1
-                trace_into(search.history, search.penalties, ALIGNED, search.cost, target, columns, mirrored, moves)
+                if ksw2:
+                    walk_ksw2(search, search.cost, moves)
+                else:
+                    trace_into(search.history, search.penalties, ALIGNED, search.cost, target, columns, mirrored, moves)
                 return search.cost
         if search.cost >= ceiling:
             return -1
@@ -2147,6 +2399,136 @@ def trace_into(
         reverse_bytes(moves.unsafe_ptr().unsafe_offset(start), len(moves) - start)
 
 
+def ksw2_trace[
+    pieces: Int
+](
+    history: History,
+    penalties: Penalties,
+    cost: Int,
+    columns: Int,
+    rows: Int,
+    first: ImmPointer[UInt8, _],
+    second: ImmPointer[UInt8, _],
+    mut moves: List[UInt8],
+) -> Bool:
+    """The path KSW2's rule picks (`Ties.KSW2`), as moves right to left, walked back from the corner, cost
+    `cost`, through a forward search's kept fronts and their gap layers (see `History.gap_layers`), every one
+    an optimal path passes kept at its own value (`Wavefront.prune_optimal`). False, the moves left as they
+    may stand, if the fronts fail it, which they do not.
+
+    At a cell of the alignment layer the walk takes a match back along its diagonal always: no cell costs
+    less than the one before it on its diagonal. At a mismatch it takes, in KSW2's order, the substitution,
+    then a gap of the first piece of the first sequence's letters (`D`), of the second's (`I`), the second
+    piece's of each, the first that brings the cell its cost; inside a gap it goes on along it unless
+    opening it at the cell before brings the gap its cost, which is KSW2's strictly cheaper extension. Each
+    test reads a cost no less than the cell it asks about could cost, so it holds exactly where the front
+    of that cost reaches the cell: one lookup a move. A cell on the first row or column has one path left, a
+    gap along it."""
+    var x = penalties.mismatch
+    # KSW2's order of the gap layers: each way's pieces the cheaper to open and extend once first.
+    var order = Array[Int, 2 * MAX_PIECES](fill=0)
+    var deletion = gap_layer(0, True)
+    var deletion2 = deletion
+    var insertion = gap_layer(0, False)
+    var insertion2 = insertion
+    comptime if pieces == 2:
+        deletion2 = gap_layer(1, True)
+        insertion2 = gap_layer(1, False)
+        if penalties.opening_of(deletion2) + penalties.extension_of(deletion2) < penalties.opening_of(
+            deletion
+        ) + penalties.extension_of(deletion):
+            swap(deletion, deletion2)
+        if penalties.opening_of(insertion2) + penalties.extension_of(insertion2) < penalties.opening_of(
+            insertion
+        ) + penalties.extension_of(insertion):
+            swap(insertion, insertion2)
+    order[0] = deletion
+    order[1] = insertion
+    order[2] = deletion2
+    order[3] = insertion2
+    var state = ALIGNED
+    var spent = cost
+    var diagonal = columns - rows
+    var column = columns
+    while True:
+        var row = column - diagonal
+        if column == 0:
+            append_moves(moves, UInt8(SECOND_GAP), row)
+            return True
+        if row == 0:
+            append_moves(moves, UInt8(FIRST_GAP), column)
+            return True
+        if state == ALIGNED:
+            var run = matched_back(first, second, column, row)
+            if run > 0:
+                append_moves(moves, UInt8(ALIGNED), run)
+                column -= run
+                continue
+            if history.column(spent - x, diagonal) >= column - 1:
+                moves.append(UInt8(ALIGNED))
+                column -= 1
+                spent -= x
+                continue
+            var entered = -1
+            for index in range(2 * pieces):
+                if history.gap_column(order[index], spent, diagonal) >= column:
+                    entered = order[index]
+                    break
+            if entered < 0:
+                return False
+            state = entered
+        else:
+            if along_first(state):
+                moves.append(UInt8(FIRST_GAP))
+                column -= 1
+                diagonal -= 1
+            else:
+                moves.append(UInt8(SECOND_GAP))
+                diagonal += 1
+            var opened = penalties.opening_of(state) + penalties.extension_of(state)
+            if history.column(spent - opened, diagonal) >= column:
+                spent -= opened
+                state = ALIGNED
+            else:
+                spent -= penalties.extension_of(state)
+
+
+def walk_ksw2[pieces: Int](mut search: Wavefront[pieces], cost: Int, mut moves: List[UInt8]):
+    """Appends, right to left, the path of cost `cost` KSW2's rule picks through the forward `search`'s kept
+    fronts (see `ksw2_trace`), and marks the search `walked`; should the fronts fail it, WFA2-lib's path
+    instead, unmarked, for the caller to write again."""
+    var start = len(moves)
+    var guard = LINE_GUARD
+    if ksw2_trace[pieces](
+        search.history,
+        search.penalties,
+        cost,
+        search.columns,
+        search.rows,
+        search.first.unsafe_ptr().unsafe_offset(guard),
+        search.second.unsafe_ptr().unsafe_offset(guard),
+        moves,
+    ):
+        search.walked = True
+        return
+    moves.resize(start, 0)
+    trace_into(
+        search.history, search.penalties, ALIGNED, cost, search.columns - search.rows, search.columns, False, moves
+    )
+
+
+def canonical_ksw2[
+    pieces: Int
+](mut ahead: Wavefront[pieces], guide: Wavefront[pieces], total: Int, limit: Int, mut moves: List[UInt8]) -> Bool:
+    """`canonical` by KSW2's rule: the forward search `ahead` grown on to `total` keeping every front an
+    optimal path passes, and walked back from the corner (see `walk_ksw2`). False, appending nothing, when
+    the fronts grown would take the two searches' kept entries past `limit`."""
+    if not grown_optimal[pieces](ahead, guide, total, limit):
+        return False
+    walk_ksw2(ahead, total, moves)
+    return True
+
+
 def canonical[
     pieces: Int
 ](
@@ -2251,7 +2633,11 @@ def solve[
     # backward one for `Ties.LEFT`, grown by itself while it may (see `traced_alone`); the other begins
     # only for a pair that has not ended by then.
     var whole = keep and start == FREE_START and finish == FREE_START
-    var mirrored = ties != Ties.RIGHT
+    # KSW2's rule is walked through the forward search's fronts, a whole pair's alone; a piece of a split,
+    # or a pair split after all, takes WFA2-lib's, for the caller to write again (see `Wavefront.walked`).
+    var ksw2 = whole and ties == Ties.KSW2
+    var rule = Ties.RIGHT if ties == Ties.KSW2 else ties
+    var mirrored = rule == Ties.LEFT
     if whole and mirrored:
         begun(backward_search, first, second, penalties, finish, keep, True, 0, 0, band.mirrored(columns - rows))
         comptime if not FORCE_BIDIRECTIONAL:
@@ -2259,9 +2645,9 @@ def solve[
             if cost != GROWING:
                 return cost
     elif whole:
-        begun(forward_search, first, second, penalties, start, keep, False, 0, 0, band)
+        begun(forward_search, first, second, penalties, start, keep, False, 0, 0, band, ksw2)
         comptime if not FORCE_BIDIRECTIONAL:
-            var cost = traced_alone(forward_search.value(), ceiling, False, limit, moves)
+            var cost = traced_alone(forward_search.value(), ceiling, False, limit, moves, ksw2)
             if cost != GROWING:
                 return cost
     if not whole or mirrored:
@@ -2279,7 +2665,9 @@ def solve[
             return SWEEP_INSTEAD
         if status == MET and start == FREE_START and finish == FREE_START:
             var traced: Bool
-            if ties == Ties.RIGHT:
+            if ksw2:
+                traced = canonical_ksw2[pieces](forward, backward, best.cost, limit, moves)
+            elif rule == Ties.RIGHT:
                 traced = canonical[pieces](forward, backward, best.cost, False, limit, moves)
             else:
                 traced = canonical[pieces](backward, forward, best.cost, True, limit, moves)
@@ -2299,7 +2687,7 @@ def solve[
                 False,
                 ceiling,
                 band,
-                ties,
+                rule,
             )
         if status == MET:
             # The backward walk runs from the meeting to the corner, left to right as the forward path goes.
@@ -2338,7 +2726,7 @@ def solve[
             True,
             Int.MAX,
             band,
-            ties,
+            rule,
         )
     # A crossing inside a gap: the piece after begins in it, and the piece before must end opening it.
     var after_start = best.layer
@@ -2359,7 +2747,7 @@ def solve[
         keep_after,
         Int.MAX,
         band.shifted(column - row),
-        ties,
+        rule,
     )
     _ = solve[pieces](
         forward_search,
@@ -2374,7 +2762,7 @@ def solve[
         keep_before,
         Int.MAX,
         band,
-        ties,
+        rule,
     )
     return best.cost
 
@@ -2416,10 +2804,13 @@ def wavefront_align(
 @fieldwise_init
 struct AffineCigar(Copyable, Movable, Writable):
     """The least cost of an alignment of two sequences and an optimal alignment's CIGAR, its free
-    letters at either end `D` and `I` runs (see `Alignment` for the CIGAR)."""
+    letters at either end `D` and `I` runs (see `Alignment` for the CIGAR); `walked` when asked for
+    `Ties.KSW2` and the search walked its rule itself, else the CIGAR is another rule's for the caller to
+    write again (see `ksw_ties`)."""
 
     var cost: Int
     var cigar: String
+    var walked: Bool
 
 
 def penalties_of(costs: Costs) raises AlignmentError -> Penalties:
@@ -2476,7 +2867,12 @@ def cigar_within[
     ref moves = space.moves
     moves.clear()
     moves.reserve(len(first) + len(second))
+    # KSW2's walk keeps each gap layer's columns too on the search it walks (see `History.gap_layers`): the
+    # entries allowed shrink so the bytes stay within the same memory.
+    var ksw2 = ties == Ties.KSW2
+    var kept = limit * KEPT_BYTES // (KEPT_BYTES + 8 * pieces) if ksw2 else limit
     var cost: Int
+    var walked: Bool
     comptime if pieces == 1:
         cost = global_path[1](
             space.forward,
@@ -2484,12 +2880,13 @@ def cigar_within[
             first,
             second,
             penalties,
-            limit,
+            kept,
             moves,
             ceiling,
             band,
             ties,
         )
+        walked = ksw2 and walked_ksw2[1](space.forward, len(first), len(second))
     else:
         cost = global_path[2](
             space.forward2,
@@ -2497,15 +2894,16 @@ def cigar_within[
             first,
             second,
             penalties,
-            limit,
+            kept,
             moves,
             ceiling,
             band,
             ties,
         )
+        walked = ksw2 and walked_ksw2[2](space.forward2, len(first), len(second))
     if cost < 0:
         return None
-    return AffineCigar(cost * penalties.scale, cigar_of_moves(first, second, moves, cost, penalties, eqx))
+    return AffineCigar(cost * penalties.scale, cigar_of_moves(first, second, moves, cost, penalties, eqx), walked)
 
 
 def global_path[
@@ -2525,7 +2923,8 @@ def global_path[
     """`solve` of a whole global alignment, appending an optimal path's moves right to left and returning its
     cost, or -1 past `ceiling` or outside `band`. A pair whose searches project a full sweep of the matrix
     finishing first, the whole matrix open and its flags within `limit`'s bytes, takes the sweep in
-    differences instead (see `differences`), which picks the same path by the same rule."""
+    differences instead (see `differences`), which picks the same path by the same rule; `Ties.KSW2`'s it
+    leaves to `walked_ksw2`'s caller."""
     var columns = len(first)
     var rows = len(second)
     var sweepable = (
@@ -2563,6 +2962,14 @@ def global_path[
         forward_search.value().probe.add(SEARCH_SWEPT_NS, clock() - started)
         forward_search.value().probe.add(SEARCH_SWEPT_CELLS, columns * rows)
     return cost if cost <= ceiling else -1
+
+
+def walked_ksw2[pieces: Int](forward_search: Optional[Wavefront[pieces]], columns: Int, rows: Int) -> Bool:
+    """Whether the last `global_path` of a `columns` by `rows` pair under `Ties.KSW2` walked KSW2's rule itself
+    (see `Wavefront.walked`), so its path needs no writing again: a pair with no letter on a side has one."""
+    if columns == 0 or rows == 0:
+        return True
+    return Bool(forward_search) and forward_search.value().walked
 
 
 def cigar_of(
@@ -2711,6 +3118,27 @@ def grown_end[
         if ahead.history.kept + guide.history.kept > limit:
             return False
     return True
+
+
+def grown_optimal[
+    pieces: Int
+](mut ahead: Wavefront[pieces], guide: Wavefront[pieces], total: Int, limit: Int = Int.MAX) -> Bool:
+    """`grown_end` keeping every front an optimal path passes (see `Wavefront.prune_optimal`), for KSW2's walk."""
+    # The reaches are read while `ahead` grows, so held apart from it meanwhile, their memory kept.
+    var reach = BackReach()
+    swap(reach, ahead.back_reach)
+    reach.build(guide.history)
+    var grown = True
+    for lag in range(min(ahead.fronts.slots - 1, ahead.cost) + 1):
+        ahead.prune_optimal(ahead.fronts.back(lag), ahead.cost - lag, reach, total)
+    while ahead.cost < total:
+        ahead.advance[True]()
+        ahead.prune_optimal(ahead.fronts.current, ahead.cost, reach, total)
+        if ahead.history.kept + guide.history.kept > limit:
+            grown = False
+            break
+    swap(reach, ahead.back_reach)
+    return grown
 
 
 def edge_span(length: Int, along_first: Bool, ends_free: EndsFree, band: Band) -> Optional[Tuple[Int, Int]]:

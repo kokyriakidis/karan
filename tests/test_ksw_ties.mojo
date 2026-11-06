@@ -200,6 +200,38 @@ def test_edit_engine_walks_ksw2() raises:
             assert_equal(infix.cigar, wi, String("infix, pair ", k))
 
 
+def test_wavefront_walks_ksw2() raises:
+    """At gap-affine costs the wavefront walks KSW2's rule itself through its kept fronts, one search alone or
+    two grown on: the whole matrix's alignment, for 600 pairs to 900 bp at affine, two-piece and linear costs,
+    deletions priced apart too; and under a memory cap far below its fronts and the cells to write again, the
+    same cost by another rule."""
+    seed(61)
+    var models = List[Costs]()
+    models.append(Costs.affine(4, 6, 2))
+    models.append(Costs.two_piece(4, 4, 2, 24, 1))
+    models.append(Costs.two_piece(12, 8, 6, 48, 4))
+    models.append(Costs.linear(3, 2))
+    models.append(Costs.affine(4, 6, 2).with_deletions(5, 1))
+    models.append(Costs.two_piece(4, 4, 2, 24, 1).with_deletions(3, 3, 20, 1))
+    var buf = TieBuffers()
+    for k in range(600):
+        var p = _piece(1 + _draw(900), [0, 10, 40, 100, 200, 350][_draw(6)])
+        var tb = p[0].copy()
+        var qb = p[1].copy()
+        var t = String(unsafe_from_utf8=tb)
+        var q = String(unsafe_from_utf8=qb)
+        var costs = models[k % len(models)]
+        var got = align(t, q, costs, Mode.GLOBAL)
+        var g = runs_of(got.cigar)
+        var whole = _text(ksw_cigar(Span(tb), Span(qb), costs, Span(g), buf, by_rows=True))
+        assert_equal(got.cigar, whole, String("pair ", k, " model ", k % len(models)))
+        if k % 10 == 0:
+            # Split for a cap far below its fronts, and too small for the cells written again: the same cost,
+            # by another rule, as `max_memory` allows.
+            var split = align(t, q, costs, Mode.GLOBAL, max_memory=4096)
+            assert_equal(split.cost, got.cost, String("split cost, pair ", k))
+
+
 def test_bounded_sweep_gives_the_whole_matrixs_alignment() raises:
     """Swept only where an alignment no costlier than the guide can pass, KSW2's rule gives the alignment every
     cell gives: 1,500 random pairs with repeats, from identical to unrelated, at unit, linear, affine and

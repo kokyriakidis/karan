@@ -367,7 +367,7 @@ def edit_cigar(
         var guide = CigarWriter(0, binary=True, runs_capacity=2 * path.distance + 2)
         cigar_into(first, second, path, True, guide)
         var guide_runs = guide^.finish_runs()
-        var walked = ksw_cigar(first, second, Costs.edit(), Span(guide_runs), space.ties)
+        var walked = ksw_cigar(first, second, Costs.edit(), Span(guide_runs), space.ties, max_bytes=max_memory)
         var matched = UInt8(ord("=")) if eqx else UInt8(ord("M"))
         var substituted = UInt8(ord("X")) if eqx else UInt8(ord("M"))
         for run in walked:

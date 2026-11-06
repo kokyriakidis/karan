@@ -50,12 +50,18 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   second gap piece's, so gaps come as early and substitutions as late as the cost allows), every edit left
   (`Ties.LEFT`), or every edit right, WFA2-lib's CIGAR byte for byte (`Ties.RIGHT`); with free ends the span
   first (`LEFT`'s for `KSW2`), whichever search found the cost, under any band or cap. At unit costs the edit
-  engine walks `KSW2` itself through the fronts it searched (`ksw2_diagonal_into`), at no cost over `LEFT`; any
-  other search's CIGAR is written again by Gotoh's recurrence (`ksw_ties`), swept by anti-diagonal in sixteen
+  engine walks `KSW2` itself through the fronts it searched (`ksw2_diagonal_into`), at no cost over `LEFT`; at
+  gap-affine costs so does a global wavefront, its forward search keeping its gap layers and every front an
+  optimal path passes (`ksw2_trace`), about a quarter over `RIGHT` on 1 kbp two-piece pieces; any other
+  search's CIGAR (a full sweep, a pair split for memory, the lanes, free ends, extensions, scored modes) is
+  written again by Gotoh's recurrence (`ksw_ties`), within `max_memory`, swept by anti-diagonal in sixteen
   lanes over only the cells an alignment no costlier than the search's can pass (its cost so far and the letters
   left at the cheaper extension), so the whole matrix's CIGAR for any pair; over minimap2's scores as costs it
   gives `ksw_extd2`'s CIGAR exactly. The C options' `ties` (formerly `right_ties`), Python's and the
   command line's `ties` take it too.
+- A reused search keeps its rings as wide as the last pair grew them, clearing only what that pair wrote:
+  each pair had grown them from narrow again, copying them at every doubling, an eighth of a 1 kbp pair's
+  time at two-piece costs (20,000 pieces: 3.85 s to 3.26 s, any rule for ties).
 - Bands of diagonals, cost caps (`max_cost`), and batches (`distances`, `alignments`, `scores`),
   capped too, many pairs at once in the lanes of a SIMD register: costs and alignments, globally and
   with free ends, an alignment's span found first, its end then its start, as the rule for ties picks

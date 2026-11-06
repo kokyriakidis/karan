@@ -8,9 +8,10 @@ KSW2 walks back from the end of the stretch and at every cell takes, of the move
 score, the diagonal (a match or a substitution), then a deletion of the first gap piece (a reference letter
 alone), an insertion of it (a query letter alone), a deletion of the second piece, an insertion of it: gaps come
 as early as the cost allows and substitutions as late. Inside a gap it keeps to the gap while the gap's run into
-the cell costs strictly less than one opened there. A rule of cells, it needs every cell's costs, which karan's
-wavefront and bit-parallel searches never hold; so the CIGAR is written again here, by Gotoh's recurrence over
-the cells about the path a search found (`ksw_cigar`).
+the cell costs strictly less than one opened there. A rule of cells, it needs the costs of the cells
+about the path. The edit and wavefront searches walk it themselves through the fronts they keep
+(`traceback.ksw2_diagonal_into`, `gap_affine.ksw2_trace`); a path any other way found, by a full sweep, a split
+pair, the lanes, free ends or an extension, is written again here by Gotoh's recurrence (`ksw_cigar`).
 
 Costs and scores choose alike. A score with a match reward, as KSW2 maximizes, is at a cell `(i, j)` the reward's
 `(i + j) / 2` less half a cost (a substitution `2 (b + a)`, a gap of `k` letters `2 q + (2 e + a) k`), the same
@@ -303,6 +304,7 @@ def _fill_and_walk_shaped[
     bound: Int32,
     low: Int,
     high: Int,
+    max_cells: Int,
     mut buf: TieBuffers,
     mut runs: List[UInt64],
 ) -> Bool:
@@ -317,7 +319,7 @@ def _fill_and_walk_shaped[
     the rows it passes on are those from its first to its last cell whose cost (its least layer's) and the least
     the letters left can cost come to no more than `bound` (see the module's note). Every row outside what an
     anti-diagonal swept costs without bound. Returns whether the last cell was reached within `bound`, and the
-    walk with it."""
+    walk with it; false too once the cells' code bytes would pass `max_cells`."""
     comptime V = SIMD[DType.int32, LANES]
     comptime B = SIMD[DType.uint8, LANES]
     var n = len(reference)
@@ -447,6 +449,8 @@ def _fill_and_walk_shaped[
             vs = clo // LANES * LANES
             at = vs
             var need = total + (chi - vs) // LANES * LANES + 2 * LANES
+            if need > max_cells:
+                return False
             if need > len(buf.codes):
                 buf.codes.resize(max(2 * len(buf.codes), need), 0)
             var cp = buf.codes.unsafe_ptr().unsafe_offset(total - vs)
@@ -631,15 +635,16 @@ def _fill_and_walk(
     bound: Int32,
     low: Int,
     high: Int,
+    max_cells: Int,
     mut buf: TieBuffers,
     mut runs: List[UInt64],
 ) -> Bool:
     """`_fill_and_walk_shaped` for these costs' shape."""
     if costs.pieces() == 2:
-        return _fill_and_walk_shaped[2](reference, query, costs, bound, low, high, buf, runs)
+        return _fill_and_walk_shaped[2](reference, query, costs, bound, low, high, max_cells, buf, runs)
     if costs.opening == 0 and costs.deletion_opening == 0:
-        return _fill_and_walk_shaped[0](reference, query, costs, bound, low, high, buf, runs)
-    return _fill_and_walk_shaped[1](reference, query, costs, bound, low, high, buf, runs)
+        return _fill_and_walk_shaped[0](reference, query, costs, bound, low, high, max_cells, buf, runs)
+    return _fill_and_walk_shaped[1](reference, query, costs, bound, low, high, max_cells, buf, runs)
 
 
 def _spelled(guide: Span[UInt64, _], reference: Span[UInt8, _], query: Span[UInt8, _]) -> List[UInt64]:
@@ -714,14 +719,15 @@ def ksw_cigar(
     low: Int = -(1 << 40),
     high: Int = 1 << 40,
     by_rows: Bool = False,
+    max_bytes: Int = Int.MAX,
 ) -> List[UInt64]:
     """The alignment of all of `reference` to all of `query` at least cost that KSW2's rule picks, as runs
     (`cigar.run_of`, `=` `X` `I` `D`), inside the diagonals `low ..= high` (reference letters less query letters).
     `guide`, an alignment of the two inside them as runs, bounds the cost: the cells swept are those that can lie
     on an alignment no costlier (see the module's note), so the cheaper `guide`, the fewer; an alignment of least
     cost sweeps about what a wavefront search did. With `by_rows`, every cell inside the diagonals is swept by
-    rows instead, the reference the bounded sweep is held to. No alignment inside the diagonals: `guide` as it
-    stands."""
+    rows instead, the reference the bounded sweep is held to. No alignment inside the diagonals, or cells
+    whose code bytes would pass `max_bytes`: `guide` as it stands, the same cost by another rule."""
     var runs = List[UInt64]()
     var n = len(reference)
     var m = len(query)
@@ -730,9 +736,9 @@ def ksw_cigar(
             return runs^
         return _spelled(guide, reference, query)
     var bound = _guide_cost(guide, reference, query, costs)
-    if _fill_and_walk(reference, query, costs, bound, low, high, buf, runs):
+    if _fill_and_walk(reference, query, costs, bound, low, high, max_bytes, buf, runs):
         return runs^
     # A guide cheaper than any alignment inside the diagonals, which no true path is: every cell they hold.
-    if bound < INF - 1 and _fill_and_walk(reference, query, costs, INF - 1, low, high, buf, runs):
+    if bound < INF - 1 and _fill_and_walk(reference, query, costs, INF - 1, low, high, max_bytes, buf, runs):
         return runs^
     return _spelled(guide, reference, query)

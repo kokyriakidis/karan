@@ -818,6 +818,7 @@ def alignments_part(
                         asked.band,
                         wanted_mode.match_score if wanted_mode.is_scored() else 0,
                         wanted_mode.kind == Mode.EXTENSION and wanted_mode.anchor == Anchor.END,
+                        limit * KEPT_BYTES,
                     )
                 statuses[unsafe_offset=index] = written(found, alignments.unsafe_offset(index * ALIGNMENT_FIELDS))
                 return

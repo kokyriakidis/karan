@@ -761,13 +761,13 @@ def aligned_within(
     """`aligned_within` through `space`'s searches, which a batch's worker keeps from pair to pair; with `runs`
     the CIGAR as runs (`Alignment.runs`) whichever engine finds it."""
     # The engines find the cost and the span by `LEFT`; `KSW2` then writes the letters between again, unless the
-    # edit engine walked them by it already.
+    # edit engine or the global wavefront walked them by it already.
     var engine_ties = Ties.LEFT if ties == Ties.KSW2 else ties
     if not mode.is_scored():
         var walked = False
         var found = least_costly(reference, query, costs, mode, band, max_cost, ties, eqx, limit, space, walked, runs)
         if ties == Ties.KSW2 and not walked:
-            ksw_rewrite(found, reference, query, costs, eqx, runs, space.ties, band)
+            ksw_rewrite(found, reference, query, costs, eqx, runs, space.ties, band, max_bytes=limit * KEPT_BYTES)
         if runs:
             as_runs(found)
         return found^
@@ -790,6 +790,7 @@ def aligned_within(
             band,
             mode.match_score,
             mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,
+            limit * KEPT_BYTES,
         )
     if runs:
         as_runs(best)
@@ -827,10 +828,12 @@ def ksw_rewrite(
     band: Band = Band(),
     reward: Int = 0,
     from_end: Bool = False,
+    max_bytes: Int = DEFAULT_MAX_MEMORY,
 ):
     """An alignment's CIGAR written again by KSW2's rule (`Ties.KSW2`, `ksw_ties.ksw_cigar`) over the same span,
     guided by the path it holds and inside `band`: the same cost (or with a match `reward` the same score, its
-    cost then the reward's matches less it), the one equal alignment KSW2 picks."""
+    cost then the reward's matches less it), the one equal alignment KSW2 picks; left as it is where the cells
+    to sweep would take more than `max_bytes`."""
     if found.reference_end <= found.reference_start and found.query_end <= found.query_start:
         return
     var guide = found.runs.copy() if len(found.runs) > 0 else runs_of(found.cigar)
@@ -856,6 +859,7 @@ def ksw_rewrite(
         buf,
         low,
         high,
+        max_bytes=max_bytes,
     )
     if reward > 0:
         var matches = 0
@@ -937,8 +941,9 @@ def least_costly(
     """The least costly alignment with `mode`'s free ends, or `not_found()`: by the bit-parallel sweep
     where it serves the pair (see `swept_by_bits`), else by the wavefront, the same alignment at the same
     costs, through `space`'s searches. With `runs` the sweep writes its CIGAR as runs (`Alignment.runs`);
-    the wavefront's stays text, which `aligned_within` turns. `Ties.KSW2` the sweep walks itself, setting
-    `walked`; elsewhere the span and the CIGAR are `Ties.LEFT`'s, for `aligned_within` to write again."""
+    the wavefront's stays text, which `aligned_within` turns. `Ties.KSW2` the sweep and a global wavefront walk
+    themselves where they can, setting `walked`; elsewhere the span and the CIGAR are `Ties.LEFT`'s, for
+    `aligned_within` to write again."""
     var ties = Ties.LEFT if rule == Ties.KSW2 else rule
     walked = False
     var columns = len(reference)
@@ -1000,12 +1005,13 @@ def least_costly(
     if mode.is_global():
         var found: Optional[AffineCigar]
         if costs.pieces() == 2:
-            found = cigar_within[2](reference, query, penalties, eqx, ceiling, space, band, ties, limit)
+            found = cigar_within[2](reference, query, penalties, eqx, ceiling, space, band, rule, limit)
         else:
-            found = cigar_within[1](reference, query, penalties, eqx, ceiling, space, band, ties, limit)
+            found = cigar_within[1](reference, query, penalties, eqx, ceiling, space, band, rule, limit)
         space.tally_wavefronts(started)
         if not found:
             return not_found()
+        walked = found.value().walked
         var cost = found.value().cost
         return Alignment(cost, -cost, found.take().cigar, 0, columns, 0, rows)
     var spanned: Optional[Spanned]
@@ -1852,6 +1858,7 @@ def capped_alignments(
                         band,
                         mode.match_score if mode.is_scored() else 0,
                         mode.kind == Mode.EXTENSION and mode.anchor == Anchor.END,
+                        limit * KEPT_BYTES,
                     )
                 out[unsafe_offset=index] = Optional(found^)
                 return
