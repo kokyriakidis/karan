@@ -15,6 +15,12 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
 
 ### Alignment
 
+- `karan.ksw2`: minimap2's `ksw_extd2_sse` (2.31) ported line for line, so the same CIGARs as minimap2: two-piece
+  gap costs, KSW2's choices among equal alignments (gaps as early as the score allows, or as late with `RIGHT`), its
+  band, Z-drop, end bonus, exact or approximate maximum, extension-only and reversed-CIGAR modes. Byte for byte with
+  the C on 23,000 random cases (600 kept in `tests/data`, `pixi run test-ksw2`); with sixty-four-lane vectors it fills
+  1 kbp gaps faster than the C's SSE (0.65 s against 1.34 s for 2,000).
+
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
   kinds, as WFA2-lib's ends-free and extension and abPOA's local: any free ends, with the presets
