@@ -237,16 +237,23 @@ def _walk_back(
     pair: Int,
 ):
     """A pair's walk back from its codes, `ksw_backtrack` by rows as `ksw2_lanes` walks it, the runs merged as they
-    come into `runs`, then reversed into the next free place of the compact CIGARs."""
+    come into `runs`, then reversed into the next free place of the compact CIGARs. The run being extended stays in
+    registers and goes to `runs` when the next one starts: read back from global memory, each step waited on the
+    one before."""
     var count = 0
+    var run_op = -1
+    var run_length = 0
 
     @always_inline
-    def push(op: Int, length: Int) {mut count, imm runs}:
-        if count > 0 and Int(runs[unsafe_offset=count - 1] & 0xF) == op:
-            runs[unsafe_offset=count - 1] += UInt32(length << 4)
+    def push(op: Int, length: Int) {mut count, mut run_op, mut run_length, imm runs}:
+        if op == run_op:
+            run_length += length
         else:
-            runs[unsafe_offset=count] = UInt32(length << 4 | op)
-            count += 1
+            if run_op >= 0:
+                runs[unsafe_offset=count] = UInt32(run_length << 4 | run_op)
+                count += 1
+            run_op = op
+            run_length = length
 
     var i = n
     var j = m
@@ -282,6 +289,9 @@ def _walk_back(
         push(2, i)
     if j > 0:
         push(1, j)
+    if run_op >= 0:
+        runs[unsafe_offset=count] = UInt32(run_length << 4 | run_op)
+        count += 1
     # Reversed into the next free place of the compact CIGARs.
     var place = Int(Atomic.fetch_add(used, Int32(count)))
     for k in range(count):
