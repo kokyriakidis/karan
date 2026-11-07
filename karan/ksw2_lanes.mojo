@@ -18,9 +18,11 @@ first piece before the second, a later source only when strictly better; and in 
 gap of each layer continues this one, only when strictly better than one opened here. The walk back is
 `ksw_backtrack` over rows.
 
-The band is KSW2's, the diagonals `-w + 1 ..= w` of target letters less query letters, one `w` for the batch;
-cells outside it are lost, as KSW2's are when its band is the whole matrix: the two agree whenever the alignment
-stays inside, which the caller checks (`touches_band`). Scores must stay within sixteen bits: pairs of up to
+The band is KSW2's, the diagonals `-w + 1 ..= w` of target letters less query letters, one `w` for the batch, or
+each pair its own (`bands`, none wider than `w`): a pair's cells outside its own band are held at minus infinity,
+as KSW2 run in that band alone holds them, so its alignment is the one its band gives whatever pairs share the
+batch. Cells outside the band are lost, as KSW2's are when its band is the whole matrix: the two agree whenever the
+alignment stays inside, which the caller checks (`touches_band`). Scores must stay within sixteen bits: pairs of up to
 `MAX_LANE_LENGTH` letters.
 """
 
@@ -72,11 +74,13 @@ def ksw_lanes[
     w: Int,
     mut buf: LaneBuffers[N],
     mut cigars: List[List[UInt32]],
+    bands: List[Int] = List[Int](),
 ):
     """Aligns up to `N` pairs (the `target_lengths[l]` letters at `targets[l]` against the `query_lengths[l]` at
     `queries[l]`, codes 0 to 3 and the wildcard 4; the pointers are untracked, so the caller keeps the letters
     alive past the call) end to end,
-    each its CIGAR into `cigars[l]` as KSW2's (`length << 4 | op`, `M` `I` `D`), all in the band `w`."""
+    each its CIGAR into `cigars[l]` as KSW2's (`length << 4 | op`, `M` `I` `D`), all in the band `w`, or each in
+    its own band `bands[l]` (at most `w`) when `bands` are given."""
     comptime V = SIMD[DType.int16, N]
     comptime B = SIMD[DType.uint8, N]
     var lanes = len(targets)
@@ -110,6 +114,12 @@ def ksw_lanes[
     buf.e2.resize(m + 2, V(NEG))
     var width = 2 * w + 1
     buf.codes.resize((n + 1) * width, B(0))
+    # Each lane's band, and the narrowest: between the narrowest's edge and the batch's, cells are masked per lane.
+    var lane_w = V(Int16(w))
+    var narrowest = w
+    for l in range(min(lanes, len(bands))):
+        lane_w[l] = Int16(bands[l])
+        narrowest = min(narrowest, bands[l])
     var neg = V(NEG)
     var qe = V(Int16(q + e))
     var qe2 = V(Int16(q2 + e2))
@@ -126,7 +136,8 @@ def ksw_lanes[
         buf.e1[j] = neg
         buf.e2[j] = neg
     for j in range(0, min(m, w - 1) + 1):
-        buf.h[j] = V(Int16(0)) if j == 0 else V(Int16(-min(q + j * e, q2 + j * e2)))
+        var h0 = V(Int16(0)) if j == 0 else V(Int16(-min(q + j * e, q2 + j * e2)))
+        buf.h[j] = V(Int16(j)).le(lane_w - 1).select(h0, neg) if j > narrowest - 1 else h0
     var h = buf.h.unsafe_ptr()
     var e1 = buf.e1.unsafe_ptr()
     var e2p = buf.e2.unsafe_ptr()
@@ -149,9 +160,17 @@ def ksw_lanes[
             var d1 = max(h[unsafe_offset=0] - qe, e1[unsafe_offset=0] - ev)
             var d2 = max(h[unsafe_offset=0] - qe2, e2p[unsafe_offset=0] - e2v)
             diag = h[unsafe_offset=0]
+            d1 = max(d1, neg)
+            d2 = max(d2, neg)
+            if i > narrowest:
+                # Column 0 lies outside the bands narrower than `i`.
+                var inside = V(Int16(i)).le(lane_w)
+                hv = inside.select(hv, neg)
+                d1 = inside.select(d1, neg)
+                d2 = inside.select(d2, neg)
             h[unsafe_offset=0] = hv
-            e1[unsafe_offset=0] = max(d1, neg)
-            e2p[unsafe_offset=0] = max(d2, neg)
+            e1[unsafe_offset=0] = d1
+            e2p[unsafe_offset=0] = d2
             left = hv
         var row = codes.unsafe_offset(i * width)
         for j in range(max(lo, 1), hi + 1):
@@ -179,6 +198,14 @@ def ksw_lanes[
             d = d | de2.gt(z - q2v).select(B(0x20), B(0))
             d = d | f2.gt(z - q2v).select(B(0x40), B(0))
             row[unsafe_offset=j - i + w] = d
+            if j < i - narrowest or j > i + narrowest - 1:
+                # Outside some lane's own band: there the cell is minus infinity.
+                var inside = V(Int16(j)).ge(V(Int16(i)) - lane_w) & V(Int16(j)).le(V(Int16(i)) + lane_w - 1)
+                z = inside.select(z, neg)
+                de1 = inside.select(de1, neg)
+                de2 = inside.select(de2, neg)
+                f1 = inside.select(f1, neg)
+                f2 = inside.select(f2, neg)
             diag = up
             h[unsafe_offset=j] = z
             e1[unsafe_offset=j] = de1
@@ -196,12 +223,13 @@ def ksw_lanes[
         cigar.clear()
         var i = target_lengths[l]
         var j = query_lengths[l]
+        var band = Int(lane_w[l])
         var state = 0
         while i > 0 and j > 0:
             var force_state = -1
-            if j < max(1, i - w):
+            if j < max(1, i - band):
                 force_state = 2
-            if j > i + w - 1:
+            if j > i + band - 1:
                 force_state = 1
             var tmp = 0
             if force_state < 0:

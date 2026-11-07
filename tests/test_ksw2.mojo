@@ -150,6 +150,48 @@ def _piece(n: Int, rate: Int) -> Tuple[List[UInt8], List[UInt8]]:
     return (t^, q^)
 
 
+def test_lane_bands_are_their_own() raises:
+    """A batch of pairs each in its own band (`bands`) gives every pair the CIGAR it gets alone in that band:
+    a pair's alignment does not depend on the pairs it is batched with."""
+    seed(9)
+    var lanes = LaneBuffers[32]()
+    var alone = LaneBuffers[32]()
+    var cigars = List[List[UInt32]]()
+    var single = List[List[UInt32]]()
+    for _ in range(16):
+        var ts = List[List[UInt8]]()
+        var qs = List[List[UInt8]]()
+        for _ in range(32):
+            var p = _piece(20 + _draw(600), [0, 20, 40, 80][_draw(4)])
+            ts.append(p[0].copy())
+            qs.append(p[1].copy())
+        var tp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var qp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var tn = List[Int]()
+        var qn = List[Int]()
+        var bands = List[Int]()
+        var w = 0
+        for k in range(32):
+            tp.append(ts[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            qp.append(qs[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            tn.append(len(ts[k]))
+            qn.append(len(qs[k]))
+            # Bands from tight to loose, some narrower than the pair's length difference.
+            var band = max(1, abs(len(ts[k]) - len(qs[k])) + [-4, 0, 8, 32][_draw(4)])
+            bands.append(band)
+            w = max(w, band)
+        ksw_lanes[32](tp, tn, qp, qn, 2, 4, 1, 4, 2, 24, 1, w, lanes, cigars, bands)
+        for k in range(32):
+            var one_t: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [tp[k]]
+            var one_q: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [qp[k]]
+            var one_tn: List[Int] = [tn[k]]
+            var one_qn: List[Int] = [qn[k]]
+            ksw_lanes[32](one_t, one_tn, one_q, one_qn, 2, 4, 1, 4, 2, 24, 1, bands[k], alone, single)
+            assert_true(cigars[k] == single[0], String("pair ", k, " band ", bands[k], " of batch band ", w))
+        _ = len(ts)
+        _ = len(qs)
+
+
 def test_lanes_match_ksw2() raises:
     """`ksw_lanes` against `ksw_extd2` on 512 random pieces in batches of 32: identical with a band holding the
     whole matrix, and in a band of the batch's length difference plus 32 wherever the path stays clear of it."""

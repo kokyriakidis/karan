@@ -22,7 +22,8 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   1 kbp gaps faster than the C's SSE (0.65 s against 1.34 s for 2,000).
 - `karan.ksw2_lanes`: the same global gap filling for a batch of pairs at once, a pair a lane: the cells, codes and
   walk back of `ksw2`, so the same CIGARs wherever the band holds the alignment; twice as fast as `ksw2` on batches
-  of like pieces.
+  of like pieces. Each pair may have its own band (`bands`): its cells outside it held at minus infinity, so its
+  CIGAR is the one its band gives alone, whatever pairs share its batch.
 
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
