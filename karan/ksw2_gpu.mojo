@@ -218,16 +218,34 @@ def _gpu_kernel[
     syncwarp()
     if lane != 0 or not active:
         return
-    # The walk back, `ksw_backtrack` by rows as `ksw2_lanes` walks it, the runs merged as they come.
-    var out = scratch.unsafe_offset(Int(shape[unsafe_offset=5]))
+    _walk_back(
+        code, stride, n, m, w, scratch.unsafe_offset(Int(shape[unsafe_offset=5])), cigars, cigar_places, used, pair
+    )
+
+
+@always_inline
+def _walk_back(
+    code: MutPointer[UInt8, MutAnyOrigin],
+    stride: Int,
+    n: Int,
+    m: Int,
+    w: Int,
+    runs: MutPointer[UInt32, MutAnyOrigin],
+    cigars: MutPointer[UInt32, MutAnyOrigin],
+    cigar_places: MutPointer[Int32, MutAnyOrigin],
+    used: MutPointer[Int32, MutAnyOrigin],
+    pair: Int,
+):
+    """A pair's walk back from its codes, `ksw_backtrack` by rows as `ksw2_lanes` walks it, the runs merged as they
+    come into `runs`, then reversed into the next free place of the compact CIGARs."""
     var count = 0
 
     @always_inline
-    def push(op: Int, length: Int) {mut count, imm out}:
-        if count > 0 and Int(out[unsafe_offset=count - 1] & 0xF) == op:
-            out[unsafe_offset=count - 1] += UInt32(length << 4)
+    def push(op: Int, length: Int) {mut count, imm runs}:
+        if count > 0 and Int(runs[unsafe_offset=count - 1] & 0xF) == op:
+            runs[unsafe_offset=count - 1] += UInt32(length << 4)
         else:
-            out[unsafe_offset=count] = UInt32(length << 4 | op)
+            runs[unsafe_offset=count] = UInt32(length << 4 | op)
             count += 1
 
     var i = n
@@ -267,9 +285,224 @@ def _gpu_kernel[
     # Reversed into the next free place of the compact CIGARs.
     var place = Int(Atomic.fetch_add(used, Int32(count)))
     for k in range(count):
-        cigars[unsafe_offset=place + k] = out[unsafe_offset=count - 1 - k]
+        cigars[unsafe_offset=place + k] = runs[unsafe_offset=count - 1 - k]
     cigar_places[unsafe_offset=2 * pair] = Int32(place)
     cigar_places[unsafe_offset=2 * pair + 1] = Int32(count)
+
+
+comptime _RECENTRE = 32
+"""Anti-diagonals between the half kernel's re-centrings of its scores."""
+
+
+def _half_kernel[
+    K: Int
+](
+    pair_ids: ImmPointer[Int32, MutAnyOrigin],
+    group: Int32,
+    targets: ImmPointer[UInt8, MutAnyOrigin],
+    queries: ImmPointer[UInt8, MutAnyOrigin],
+    shapes: ImmPointer[Int32, MutAnyOrigin],
+    code_offsets: ImmPointer[Int64, MutAnyOrigin],
+    codes: MutPointer[UInt8, MutAnyOrigin],
+    scratch: MutPointer[UInt32, MutAnyOrigin],
+    cigars: MutPointer[UInt32, MutAnyOrigin],
+    cigar_places: MutPointer[Int32, MutAnyOrigin],
+    used: MutPointer[Int32, MutAnyOrigin],
+    a: Int32,
+    b: Int32,
+    ambi: Int32,
+    q: Int32,
+    e: Int32,
+    q2: Int32,
+    e2: Int32,
+):
+    """`_gpu_kernel` with its scores in fp16, two cells an instruction: a lane's diagonals as two vectors of `K / 2`,
+    the even and the odd ones (a step's cells are all of one parity, so a step is one vector operation a formula), the
+    scores relative to the warp's highest of a step, re-centred every `_RECENTRE` anti-diagonals. Within a band of 512
+    diagonals the scores then stay within a few hundred of each other, integers fp16 holds exactly, so every sum and
+    comparison, and so every code, is `_gpu_kernel`'s; minus infinity stands for its clamp at `NEG`, which no real
+    score ever reaches."""
+    comptime assert K % 4 == 0, "two vectors of an even width"
+    comptime KH = K // 2
+    comptime H = SIMD[DType.float16, KH]
+    comptime I = SIMD[DType.int32, KH]
+    comptime U = SIMD[DType.uint8, KH]
+    var slot = Int(block_idx.x) * (_WARPS * WARP_SIZE // PAIR_LANES) + Int(thread_idx.x) // PAIR_LANES
+    var active = slot < Int(group)
+    var pair = Int(pair_ids[unsafe_offset=slot]) if active else 0
+    var lane = Int(thread_idx.x) % PAIR_LANES
+    var shape = shapes.unsafe_offset(pair * _SHAPE)
+    var target = targets.unsafe_offset(Int(shape[unsafe_offset=0]))
+    var n = Int(shape[unsafe_offset=1]) if active else 0
+    var query = queries.unsafe_offset(Int(shape[unsafe_offset=2]))
+    var m = Int(shape[unsafe_offset=3]) if active else 0
+    var w = Int(shape[unsafe_offset=4]) if active else 1
+    var code = codes.unsafe_offset(Int(code_offsets[unsafe_offset=pair]))
+    var steps = Int(warp.max(Int32(n + m)))
+    var stride = code_stride(w, K)
+    var ninf = Float16.MIN
+    var qe = Float16(q + e)
+    var qe2 = Float16(q2 + e2)
+    var qh = Float16(q)
+    var q2h = Float16(q2)
+    var eh = Float16(e)
+    var e2h = Float16(e2)
+    var match_score = Float16(a)
+    var mismatch = Float16(-b)
+    var wild = Float16(-ambi)
+    var base = lane * K
+    # Even and odd diagonals' latest cells: the boundary cells first.
+    var h_even = H(ninf)
+    var h_odd = H(ninf)
+    comptime for k in range(KH):
+        comptime for p in range(2):
+            var t = base + 2 * k + p
+            if t < 2 * w:
+                var d = t - w
+                var gap = Int32(abs(d))
+                var value = Float16(0) if d == 0 else Float16(-min(q + gap * e, q2 + gap * e2))
+                if p == 0:
+                    h_even[k] = value
+                else:
+                    h_odd[k] = value
+    var e1_even = H(ninf)
+    var e1_odd = H(ninf)
+    var e2_even = H(ninf)
+    var e2_odd = H(ninf)
+    var f1_even = H(ninf)
+    var f1_odd = H(ninf)
+    var f2_even = H(ninf)
+    var f2_odd = H(ninf)
+    var pending = Array[UInt8, K](fill=0)
+    var offsets = I(0)
+    comptime for k in range(KH):
+        offsets[k] = Int32(2 * k)
+    for r in range(2, steps + 1):
+        var parity = (r + w) & 1
+        var one: UInt32 = 1
+        # The step's cells: diagonal `t`, row `i`, column `j`, and whether they are inside the band and the matrix.
+        var t = I(Int32(base + parity)) + offsets
+        var d = t - Int32(w)
+        var i = (I(Int32(r)) - d) >> 1
+        var j = I(Int32(r)) - i
+        var valid = t.lt(Int32(2 * w)) & i.ge(1) & i.le(Int32(n)) & j.ge(1) & j.le(Int32(m))
+        var tc = U(0)
+        var qc = U(0)
+        comptime for k in range(KH):
+            if valid[k]:
+                tc[k] = target[unsafe_offset=Int(i[k]) - 1]
+                qc[k] = query[unsafe_offset=Int(j[k]) - 1]
+        var sc = tc.eq(qc).select(H(match_score), H(mismatch))
+        sc = (tc.eq(4) | qc.eq(4)).select(H(wild), sc)
+        var up_h: H
+        var up_e1: H
+        var up_e2: H
+        var left_h: H
+        var left_f1: H
+        var left_f2: H
+        var diag: H
+        if parity == 0:
+            # Even diagonals: the cell above is the odd diagonal after, in this lane; the one to the left the odd
+            # diagonal before, the last of the lane below for the first.
+            var from_h = warp.shuffle_up(h_odd[KH - 1], one)
+            var from_f1 = warp.shuffle_up(f1_odd[KH - 1], one)
+            var from_f2 = warp.shuffle_up(f2_odd[KH - 1], one)
+            if lane == 0:
+                from_h = ninf
+                from_f1 = ninf
+                from_f2 = ninf
+            up_h = h_odd
+            up_e1 = e1_odd
+            up_e2 = e2_odd
+            left_h = h_odd.shift_right[1]()
+            left_f1 = f1_odd.shift_right[1]()
+            left_f2 = f2_odd.shift_right[1]()
+            left_h[0] = from_h
+            left_f1[0] = from_f1
+            left_f2[0] = from_f2
+            diag = h_even
+        else:
+            # Odd diagonals: the cell above is the even diagonal after, the first of the lane above for the last;
+            # the one to the left the even diagonal before, in this lane.
+            var from_h = warp.shuffle_down(h_even[0], one)
+            var from_e1 = warp.shuffle_down(e1_even[0], one)
+            var from_e2 = warp.shuffle_down(e2_even[0], one)
+            if lane == PAIR_LANES - 1:
+                from_h = ninf
+                from_e1 = ninf
+                from_e2 = ninf
+            up_h = h_even.shift_left[1]()
+            up_e1 = e1_even.shift_left[1]()
+            up_e2 = e2_even.shift_left[1]()
+            up_h[KH - 1] = from_h
+            up_e1[KH - 1] = from_e1
+            up_e2[KH - 1] = from_e2
+            left_h = h_even
+            left_f1 = f1_even
+            left_f2 = f2_even
+            diag = h_odd
+        var z = diag + sc
+        var de1 = max(up_h - qe, up_e1 - eh)
+        var de2 = max(up_h - qe2, up_e2 - e2h)
+        var df1 = max(left_h - qe, left_f1 - eh)
+        var df2 = max(left_h - qe2, left_f2 - e2h)
+        var c = de1.gt(z).select(U(1), U(0))
+        z = max(z, de1)
+        c = df1.gt(z).select(U(2), c)
+        z = max(z, df1)
+        c = de2.gt(z).select(U(3), c)
+        z = max(z, de2)
+        c = df2.gt(z).select(U(4), c)
+        z = max(z, df2)
+        c |= de1.gt(z - qh).select(U(0x08), U(0))
+        c |= df1.gt(z - qh).select(U(0x10), U(0))
+        c |= de2.gt(z - q2h).select(U(0x20), U(0))
+        c |= df2.gt(z - q2h).select(U(0x40), U(0))
+        comptime for k in range(KH):
+            if parity == 0:
+                pending[2 * k] = c[k]
+            else:
+                pending[2 * k + 1] = c[k]
+        if parity == 0:
+            h_even = valid.select(z, h_even)
+            e1_even = valid.select(de1, e1_even)
+            e2_even = valid.select(de2, e2_even)
+            f1_even = valid.select(df1, f1_even)
+            f2_even = valid.select(df2, f2_even)
+        else:
+            h_odd = valid.select(z, h_odd)
+            e1_odd = valid.select(de1, e1_odd)
+            e2_odd = valid.select(de2, e2_odd)
+            f1_odd = valid.select(df1, f1_odd)
+            f2_odd = valid.select(df2, f2_odd)
+        if (r & 1) == 1 and r <= n + m + 1 and base < 2 * w:
+            _store_codes[K](code.unsafe_offset((r >> 1) * stride + base), pending)
+        if r % _RECENTRE == 0:
+            # The warp's highest score of this step's cells to zero: every score less it, minus infinity kept.
+            # (Diagonals past the matrix keep stale scores, which may drift out of fp16's exact range; no cell
+            # reads them.)
+            var top = valid.select(z, H(ninf)).reduce_max()
+            var high = warp.max(Int32(top) if top > Float16(-30000) else Int32(-30000))
+            if high != 0 and high != -30000:
+                var shift = H(Float16(high))
+                h_even -= shift
+                h_odd -= shift
+                e1_even -= shift
+                e1_odd -= shift
+                e2_even -= shift
+                e2_odd -= shift
+                f1_even -= shift
+                f1_odd -= shift
+                f2_even -= shift
+                f2_odd -= shift
+    if active and ((n + m) & 1) == 0 and n + m == steps and base < 2 * w:
+        _store_codes[K](code.unsafe_offset(((n + m) >> 1) * stride + base), pending)
+    syncwarp()
+    if lane != 0 or not active:
+        return
+    _walk_back(
+        code, stride, n, m, w, scratch.unsafe_offset(Int(shape[unsafe_offset=5])), cigars, cigar_places, used, pair
+    )
 
 
 @always_inline
@@ -284,6 +517,20 @@ def _slots_for(w: Int) -> Int:
     """Diagonals a lane holds for a band `w`: the fewest even number that spans it over `PAIR_LANES` lanes."""
     var needed = (2 * w + PAIR_LANES - 1) // PAIR_LANES
     return max(2, needed + (needed & 1))
+
+
+@always_inline
+def _group_of(w: Int, half: Bool) -> Int:
+    """A band's kernel group: diagonals a lane `2 (g + 1)` for `_gpu_kernel`, `4 << g` (4, 8, 16) for `_half_kernel`."""
+    if not half:
+        return _slots_for(w) // 2 - 1
+    var needed = (2 * w + PAIR_LANES - 1) // PAIR_LANES
+    return 0 if needed <= 4 else (1 if needed <= 8 else 2)
+
+
+@always_inline
+def _group_slots(g: Int, half: Bool) -> Int:
+    return (4 << g) if half else 2 * (g + 1)
 
 
 def gpu_fits(target_length: Int, query_length: Int, band: Int) -> Bool:
@@ -310,6 +557,12 @@ struct LanesGpu(Movable):
     var used: DeviceBuffer[DType.int32]
     var submitted: Int
     """Pairs submitted and not yet collected."""
+    var half: Bool
+    """Whether the cells are computed two an instruction in fp16 (`_half_kernel`), or one in 32 bits (the
+    default). Both give the same CIGARs. On an RTX 2070 the fp16 kernel is slower (0.06-0.08 s against 0.05 s for
+    60,000 stretches of 1 kbp): PTX 6.3, which Mojo emits for sm_75, has no fp16 `max`, so every max goes through
+    fp32. On an Apple M2 it is slower too (2.0 s against 1.1 s). It may pay where fp16x2 `max` is native (sm_80
+    on)."""
 
     def __init__(out self, gpu: Int = 0) raises:
         self.context = DeviceContext(device_id=gpu)
@@ -324,6 +577,7 @@ struct LanesGpu(Movable):
         self.pair_ids = self.context.enqueue_create_buffer[DType.int32](1)
         self.used = self.context.enqueue_create_buffer[DType.int32](1)
         self.submitted = 0
+        self.half = False
 
 
 struct GpuSegment(Movable, Sized):
@@ -415,7 +669,7 @@ def submit(
             bands.append(w)
             # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16; a new round when they would pass
             # the budget, its codes from the start of the buffer again.
-            var size = ((n + m) // 2 + 2) * code_stride(w, _slots_for(w))
+            var size = ((n + m) // 2 + 2) * code_stride(w, _group_slots(_group_of(w, gpu.half), gpu.half))
             code_round = (code_round + 15) // 16 * 16
             if code_round + size > CODE_BUDGET and code_round > 0:
                 round_ends.append(len(bands) - 1)  # this pair starts the next round
@@ -449,7 +703,7 @@ def submit(
     for rnd in range(len(round_ends)):
         comptime for g in range(_SLOT_CHOICES):
             for l in range(round_start, round_ends[rnd]):
-                if _slots_for(bands[l]) == 2 * (g + 1):
+                if _group_of(bands[l], gpu.half) == g:
                     by_slots.append(Int32(l))
             group_ends.append(len(by_slots))
         round_start = round_ends[rnd]
@@ -477,9 +731,33 @@ def submit(
     for rnd in range(len(round_ends)):
         comptime for g in range(_SLOT_CHOICES):
             comptime kernel = _gpu_kernel[2 * (g + 1)]
+            comptime half_kernel = _half_kernel[4 << min(g, 2)]
             var end = group_ends[rnd * _SLOT_CHOICES + g]
             var group = end - start
-            if group > 0:
+            if group > 0 and gpu.half:
+                ctx.enqueue_function[half_kernel](
+                    gpu.pair_ids.unsafe_ptr().unsafe_offset(start).unsafe_origin_cast[MutAnyOrigin](),
+                    Int32(group),
+                    gpu.targets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.queries.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.shapes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.code_offsets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.codes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.scratch.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.cigars.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.cigar_places.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.used.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    Int32(a),
+                    Int32(b),
+                    Int32(ambi),
+                    Int32(q),
+                    Int32(e),
+                    Int32(q2),
+                    Int32(e2),
+                    grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
+                    block_dim=_WARPS * WARP_SIZE,
+                )
+            elif group > 0:
                 ctx.enqueue_function[kernel](
                     gpu.pair_ids.unsafe_ptr().unsafe_offset(start).unsafe_origin_cast[MutAnyOrigin](),
                     Int32(group),

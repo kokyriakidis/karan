@@ -221,8 +221,12 @@ def test_gpu_matches_lanes() raises:
             var band = max(1, abs(len(ts[k]) - len(qs[k])) + [-4, 0, 8, 32][_draw(4)])
             bands.append(min(band, GPU_MAX_BAND // 2))
         var got = List[List[UInt32]]()
+        var got32 = List[List[UInt32]]()
+        ksw_lanes_gpu(gpu, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, got32)
+        gpu.half = True
         ksw_lanes_gpu(gpu, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, got)
         for k in range(512):
+            assert_true(got32[k] == got[k], String("pair ", k, ": the fp16 and 32-bit kernels differ"))
             var one_t: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [tp[k]]
             var one_q: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [qp[k]]
             var one_tn: List[Int] = [tn[k]]
