@@ -605,6 +605,12 @@ struct GpuSegment(Movable, Sized):
         self.targets.extend(Span(unsafe_ptr=target, length=n))
         self.queries.extend(Span(unsafe_ptr=query, length=m))
 
+    def reserve(mut self, target_letters: Int, query_letters: Int, pairs: Int):
+        """Room for `pairs` more pairs of these many letters in all, so `add` does not grow the segment piecemeal."""
+        self.targets.reserve(len(self.targets) + target_letters)
+        self.queries.reserve(len(self.queries) + query_letters)
+        self.shapes.reserve(len(self.shapes) + 5 * pairs)
+
     def __len__(self) -> Int:
         return len(self.shapes) // 5
 

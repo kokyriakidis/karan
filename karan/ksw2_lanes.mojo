@@ -113,7 +113,14 @@ def ksw_lanes[
     buf.e1.resize(m + 2, V(NEG))
     buf.e2.resize(m + 2, V(NEG))
     var width = 2 * w + 1
-    buf.codes.resize((n + 1) * width, B(0))
+    # Every code the walk back reads, this call writes first (a lane's band lies inside the batch's): the buffer
+    # grows uninitialized, its old codes not copied.
+    var cells = (n + 1) * width
+    if buf.codes.capacity() < cells:
+        buf.codes = List[B](capacity=cells)
+    else:
+        buf.codes.clear()
+    buf.codes.resize(unsafe_uninit_length=cells)
     # Each lane's band, and the narrowest: between the narrowest's edge and the batch's, cells are masked per lane.
     var lane_w = V(Int16(w))
     var narrowest = w
