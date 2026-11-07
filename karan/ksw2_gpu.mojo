@@ -28,9 +28,35 @@ from .ksw2_lanes import MAX_LANE_LENGTH, NEG
 comptime GPU_MAX_BAND = 256
 """The most diagonals (`2 w`) a pair's band may span on the GPU; wider bands stay on the CPU."""
 comptime _WARPS = 4
-"""Warps of a block, each a pair."""
+"""Warps of a block."""
+comptime PAIR_LANES = 32
+"""Lanes a pair takes. 32 measured best on an RTX 2070: with 16 a lane held more diagonals (6 for a typical band of
+70 to 90) and the extra registers cost more warps than the busier lanes gained."""
+comptime _SLOT_CHOICES = 4
+"""Diagonals a lane may hold: 2, 4, 6, 8 (even, so a lane's diagonals start even), for bands of up to 256."""
 comptime _SHAPE = 6
 """Each pair's numbers: target letters' offset and count, query letters' offset and count, band `w`, CIGAR offset."""
+
+
+@always_inline
+def _store_codes[K: Int](dest: MutPointer[UInt8, MutAnyOrigin], pending: Array[UInt8, K]):
+    """A lane's `K` codes in power-of-two pieces (`K` even), each with the alignment its block has: `K`'s lowest bit."""
+    comptime P = 2 if K <= 2 else (4 if K <= 4 else (8 if K <= 8 else 16))
+    comptime align = K & -K
+    var v = SIMD[DType.uint8, P](0)
+    comptime for s in range(K):
+        v[s] = pending[s]
+    comptime at8 = K & 16
+    comptime at4 = at8 + (K & 8)
+    comptime at2 = at4 + (K & 4)
+    comptime if (K & 16) != 0:
+        dest.unsafe_store[alignment=align](v.slice[16 if P >= 16 else 2, offset=0]())
+    comptime if (K & 8) != 0:
+        dest.unsafe_offset(at8).unsafe_store[alignment=align](v.slice[8 if P >= 8 else 2, offset=at8]())
+    comptime if (K & 4) != 0:
+        dest.unsafe_offset(at4).unsafe_store[alignment=align](v.slice[4 if P >= 4 else 2, offset=at4]())
+    comptime if (K & 2) != 0:
+        dest.unsafe_offset(at2).unsafe_store[alignment=align](v.slice[2, offset=at2]())
 
 
 def _gpu_kernel[
@@ -59,40 +85,42 @@ def _gpu_kernel[
     0 into `scratch`, copied to the next free place in `cigars` (`used` counts them), its place and length to
     `cigar_places` (see the module's notes). The warps take the pairs `pair_ids[0 ..< group]`."""
     comptime assert K % 2 == 0, "a lane's diagonals start even, so its active ones follow the step's parity"
-    comptime V = SIMD[DType.int32, K]
-    var slot = Int(block_idx.x) * _WARPS + Int(thread_idx.x) // WARP_SIZE
-    if slot >= Int(group):
-        return
-    var pair = Int(pair_ids[unsafe_offset=slot])
-    var lane = Int(lane_id())
+    comptime V = Array[Int32, K]
+    # A warp holds `WARP_SIZE / PAIR_LANES` pairs; a lane past the last pair idles but keeps step for the shuffles.
+    var slot = Int(block_idx.x) * (_WARPS * WARP_SIZE // PAIR_LANES) + Int(thread_idx.x) // PAIR_LANES
+    var active = slot < Int(group)
+    var pair = Int(pair_ids[unsafe_offset=slot]) if active else 0
+    var lane = Int(thread_idx.x) % PAIR_LANES
     var shape = shapes.unsafe_offset(pair * _SHAPE)
     var target = targets.unsafe_offset(Int(shape[unsafe_offset=0]))
-    var n = Int(shape[unsafe_offset=1])
+    var n = Int(shape[unsafe_offset=1]) if active else 0
     var query = queries.unsafe_offset(Int(shape[unsafe_offset=2]))
-    var m = Int(shape[unsafe_offset=3])
-    var w = Int(shape[unsafe_offset=4])
+    var m = Int(shape[unsafe_offset=3]) if active else 0
+    var w = Int(shape[unsafe_offset=4]) if active else 1
     var code = codes.unsafe_offset(Int(code_offsets[unsafe_offset=pair]))
+    # The warp steps through its longest pair's anti-diagonals, every lane in step for the shuffles.
+    var steps = Int(warp.max(Int32(n + m)))
     var stride = code_stride(w, K)
     var neg = Int32(NEG)
     var qe = q + e
     var qe2 = q2 + e2
     # Each diagonal's latest cell: its boundary cell first, in row 0 or column 0.
-    var h = V(neg)
-    var e1 = V(neg)
-    var e2v = V(neg)
-    var f1 = V(neg)
-    var f2 = V(neg)
+    var h = V(fill=neg)
+    var e1 = V(fill=neg)
+    var e2v = V(fill=neg)
+    var f1 = V(fill=neg)
+    var f2 = V(fill=neg)
     var base = lane * K
     # This lane's codes of the current pair of anti-diagonals (`2 R`, `2 R + 1`: one parity of diagonals each),
     # written as one `K`-byte store once both are done.
-    var pending = SIMD[DType.uint8, K](0)
+    var pending = Array[UInt8, K](fill=0)
     comptime for s in range(K):
         var t = base + s
         if t < 2 * w:
             var d = t - w
             var gap = Int32(abs(d))
             h[s] = Int32(0) if d == 0 else -min(q + gap * e, q2 + gap * e2)
-    for r in range(2, n + m + 1):
+    for r in range(2, steps + 1):
         # The edge diagonals of the lanes either side, from the previous anti-diagonal.
         var one: UInt32 = 1
         var next_h = warp.shuffle_down(h[0], one)
@@ -101,7 +129,7 @@ def _gpu_kernel[
         var prev_h = warp.shuffle_up(h[K - 1], one)
         var prev_f1 = warp.shuffle_up(f1[K - 1], one)
         var prev_f2 = warp.shuffle_up(f2[K - 1], one)
-        if lane == WARP_SIZE - 1:
+        if lane == PAIR_LANES - 1:
             next_h = neg
             next_e1 = neg
             next_e2 = neg
@@ -177,12 +205,13 @@ def _gpu_kernel[
                     e2v[s] = de2
                     f1[s] = df1
                     f2[s] = df2
-        if (r & 1) == 1 and base < 2 * w:
-            code.unsafe_offset((r >> 1) * stride + base).unsafe_store[alignment=K](pending)
-    if ((n + m) & 1) == 0 and base < 2 * w:
-        code.unsafe_offset(((n + m) >> 1) * stride + base).unsafe_store[alignment=K](pending)
+        if (r & 1) == 1 and r <= n + m + 1 and base < 2 * w:
+            _store_codes[K](code.unsafe_offset((r >> 1) * stride + base), pending)
+    # A pair whose last anti-diagonal is even and the warp's last: its last row is not stored yet.
+    if active and ((n + m) & 1) == 0 and n + m == steps and base < 2 * w:
+        _store_codes[K](code.unsafe_offset(((n + m) >> 1) * stride + base), pending)
     syncwarp()
-    if lane != 0:
+    if lane != 0 or not active:
         return
     # The walk back, `ksw_backtrack` by rows as `ksw2_lanes` walks it, the runs merged as they come.
     var out = scratch.unsafe_offset(Int(shape[unsafe_offset=5]))
@@ -247,9 +276,9 @@ def code_stride(w: Int, slots: Int) -> Int:
 
 @always_inline
 def _slots_for(w: Int) -> Int:
-    """Diagonals a lane holds for a band `w`: the fewest of 2, 4, 8 that span it."""
-    var needed = (2 * w + WARP_SIZE - 1) // WARP_SIZE
-    return 2 if needed <= 2 else (4 if needed <= 4 else 8)
+    """Diagonals a lane holds for a band `w`: the fewest even number that spans it over `PAIR_LANES` lanes."""
+    var needed = (2 * w + PAIR_LANES - 1) // PAIR_LANES
+    return max(2, needed + (needed & 1))
 
 
 def gpu_fits(target_length: Int, query_length: Int, band: Int) -> Bool:
@@ -342,8 +371,8 @@ def ksw_lanes_gpu(
         shapes.append(Int32(cigar_total))
         t_tape.extend(Span(unsafe_ptr=targets[l], length=n))
         q_tape.extend(Span(unsafe_ptr=queries[l], length=m))
-        # Each pair's codes 8-byte aligned, for its lanes' stores of up to 8.
-        code_total = (code_total + 7) // 8 * 8
+        # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16.
+        code_total = (code_total + 15) // 16 * 16
         code_offsets.append(Int64(code_total))
         code_total += ((n + m) // 2 + 2) * code_stride(bands[l], _slots_for(bands[l]))
         cigar_total += n + m + 1
@@ -365,9 +394,9 @@ def ksw_lanes_gpu(
     # The pairs by how many diagonals a lane holds: the fewest that span its band.
     var by_slots = List[Int32](capacity=count)
     var group_ends = List[Int]()
-    comptime for g in range(3):
+    comptime for g in range(_SLOT_CHOICES):
         for l in range(count):
-            if _slots_for(bands[l]) == (2 << g):
+            if _slots_for(bands[l]) == 2 * (g + 1):
                 by_slots.append(Int32(l))
         group_ends.append(len(by_slots))
     ref ctx = gpu.context
@@ -378,8 +407,8 @@ def ksw_lanes_gpu(
     ctx.enqueue_copy(gpu.pair_ids.create_sub_buffer[DType.int32](0, count), by_slots.unsafe_ptr())
     ctx.enqueue_memset(gpu.used, Int32(0))
     var start = 0
-    comptime for g in range(3):
-        comptime kernel = _gpu_kernel[2 << g]
+    comptime for g in range(_SLOT_CHOICES):
+        comptime kernel = _gpu_kernel[2 * (g + 1)]
         var group = group_ends[g] - start
         if group > 0:
             ctx.enqueue_function[kernel](
@@ -401,7 +430,7 @@ def ksw_lanes_gpu(
                 Int32(e),
                 Int32(q2),
                 Int32(e2),
-                grid_dim=ceildiv(group, _WARPS),
+                grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
                 block_dim=_WARPS * WARP_SIZE,
             )
         start = group_ends[g]
