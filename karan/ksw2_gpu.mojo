@@ -303,6 +303,8 @@ struct LanesGpu(Movable):
     var cigar_places: DeviceBuffer[DType.int32]
     var pair_ids: DeviceBuffer[DType.int32]
     var used: DeviceBuffer[DType.int32]
+    var submitted: Int
+    """Pairs submitted and not yet collected."""
 
     def __init__(out self, gpu: Int = 0) raises:
         self.context = DeviceContext(device_id=gpu)
@@ -316,15 +318,41 @@ struct LanesGpu(Movable):
         self.cigar_places = self.context.enqueue_create_buffer[DType.int32](2)
         self.pair_ids = self.context.enqueue_create_buffer[DType.int32](1)
         self.used = self.context.enqueue_create_buffer[DType.int32](1)
+        self.submitted = 0
 
 
-def ksw_lanes_gpu(
+struct GpuSegment(Movable, Sized):
+    """Pairs for `LanesGpu.submit`, packed by one caller thread: their target and query letters end to end and per pair
+    `t_offset, n, q_offset, m, w` (offsets into this segment's letters, `w` its band, each pair `gpu_fits`)."""
+
+    var targets: List[UInt8]
+    var queries: List[UInt8]
+    var shapes: List[Int32]
+
+    def __init__(out self):
+        self.targets = List[UInt8]()
+        self.queries = List[UInt8]()
+        self.shapes = List[Int32]()
+
+    def add(mut self, target: ImmPointer[UInt8, _], n: Int, query: ImmPointer[UInt8, _], m: Int, band: Int) raises:
+        """A pair: `n` target letters, `m` query letters, in band `band`."""
+        if not gpu_fits(n, m, band):
+            raise Error(t"GpuSegment: a pair of {n} x {m} in band {band} does not fit")
+        self.shapes.append(Int32(len(self.targets)))
+        self.shapes.append(Int32(n))
+        self.shapes.append(Int32(len(self.queries)))
+        self.shapes.append(Int32(m))
+        self.shapes.append(Int32(band))
+        self.targets.extend(Span(unsafe_ptr=target, length=n))
+        self.queries.extend(Span(unsafe_ptr=query, length=m))
+
+    def __len__(self) -> Int:
+        return len(self.shapes) // 5
+
+
+def submit(
     mut gpu: LanesGpu,
-    targets: ImmSpan[ImmPointer[UInt8, ImmUntrackedOrigin], _],
-    target_lengths: ImmSpan[Int, _],
-    queries: ImmSpan[ImmPointer[UInt8, ImmUntrackedOrigin], _],
-    query_lengths: ImmSpan[Int, _],
-    bands: ImmSpan[Int, _],
+    segments: ImmSpan[GpuSegment, _],
     a: Int,
     b: Int,
     ambi: Int,
@@ -332,14 +360,9 @@ def ksw_lanes_gpu(
     e_in: Int,
     q2_in: Int,
     e2_in: Int,
-    mut cigars: List[List[UInt32]],
 ) raises:
-    """`ksw_lanes` for any number of pairs, each in its own band (`bands`, each pair `gpu_fits`), on the GPU: pair
-    `l`'s CIGAR into `cigars[l]` (`length << 4 | op`, `M` `I` `D`), the one `ksw_lanes` gives it alone in its band."""
-    var count = len(targets)
-    cigars.resize(count, List[UInt32]())
-    if count == 0:
-        return
+    """Starts the pairs of `segments` on the GPU, in order, and returns: `collect` gives their CIGARs. Call it with
+    nothing submitted (after a `collect`): the GPU is then idle, so the uploads, from pageable memory, do not wait."""
     var q = q_in
     var e = e_in
     var q2 = q2_in
@@ -351,35 +374,49 @@ def ksw_lanes_gpu(
         var te = e
         e = e2
         e2 = te
-    # The letters end to end, each pair's numbers, and where its codes and CIGAR go.
-    var t_tape = List[UInt8]()
-    var q_tape = List[UInt8]()
+    var count = 0
+    var t_total = 0
+    var q_total = 0
+    for si in range(len(segments)):
+        ref seg = segments[si]
+        count += len(seg)
+        t_total += len(seg.targets)
+        q_total += len(seg.queries)
+    gpu.submitted = count
+    if count == 0:
+        return
+    # Each pair's numbers with the segments' letters end to end, and where its codes and CIGAR go.
     var shapes = List[Int32](capacity=count * _SHAPE)
     var code_offsets = List[Int64](capacity=count)
+    var bands = List[Int](capacity=count)
     var code_total = 0
     var cigar_total = 0
-    for l in range(count):
-        var n = target_lengths[l]
-        var m = query_lengths[l]
-        if not gpu_fits(n, m, bands[l]):
-            raise Error(t"ksw_lanes_gpu: pair {l} ({n} x {m}, band {bands[l]}) does not fit")
-        shapes.append(Int32(len(t_tape)))
-        shapes.append(Int32(n))
-        shapes.append(Int32(len(q_tape)))
-        shapes.append(Int32(m))
-        shapes.append(Int32(bands[l]))
-        shapes.append(Int32(cigar_total))
-        t_tape.extend(Span(unsafe_ptr=targets[l], length=n))
-        q_tape.extend(Span(unsafe_ptr=queries[l], length=m))
-        # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16.
-        code_total = (code_total + 15) // 16 * 16
-        code_offsets.append(Int64(code_total))
-        code_total += ((n + m) // 2 + 2) * code_stride(bands[l], _slots_for(bands[l]))
-        cigar_total += n + m + 1
-    if len(gpu.targets) < len(t_tape):
-        gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](len(t_tape))
-    if len(gpu.queries) < len(q_tape):
-        gpu.queries = gpu.context.enqueue_create_buffer[DType.uint8](len(q_tape))
+    var t_base = 0
+    var q_base = 0
+    for si in range(len(segments)):
+        ref seg = segments[si]
+        for p in range(len(seg)):
+            var n = Int(seg.shapes[5 * p + 1])
+            var m = Int(seg.shapes[5 * p + 3])
+            var w = Int(seg.shapes[5 * p + 4])
+            shapes.append(Int32(t_base) + seg.shapes[5 * p])
+            shapes.append(Int32(n))
+            shapes.append(Int32(q_base) + seg.shapes[5 * p + 2])
+            shapes.append(Int32(m))
+            shapes.append(Int32(w))
+            shapes.append(Int32(cigar_total))
+            bands.append(w)
+            # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16.
+            code_total = (code_total + 15) // 16 * 16
+            code_offsets.append(Int64(code_total))
+            code_total += ((n + m) // 2 + 2) * code_stride(w, _slots_for(w))
+            cigar_total += n + m + 1
+        t_base += len(seg.targets)
+        q_base += len(seg.queries)
+    if len(gpu.targets) < t_total:
+        gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](t_total)
+    if len(gpu.queries) < q_total:
+        gpu.queries = gpu.context.enqueue_create_buffer[DType.uint8](q_total)
     if len(gpu.shapes) < len(shapes):
         gpu.shapes = gpu.context.enqueue_create_buffer[DType.int32](len(shapes))
     if len(gpu.code_offsets) < count:
@@ -400,8 +437,20 @@ def ksw_lanes_gpu(
                 by_slots.append(Int32(l))
         group_ends.append(len(by_slots))
     ref ctx = gpu.context
-    ctx.enqueue_copy(gpu.targets.create_sub_buffer[DType.uint8](0, max(len(t_tape), 1)), t_tape.unsafe_ptr())
-    ctx.enqueue_copy(gpu.queries.create_sub_buffer[DType.uint8](0, max(len(q_tape), 1)), q_tape.unsafe_ptr())
+    t_base = 0
+    q_base = 0
+    for si in range(len(segments)):
+        ref seg = segments[si]
+        if len(seg.targets) > 0:
+            ctx.enqueue_copy(
+                gpu.targets.create_sub_buffer[DType.uint8](t_base, len(seg.targets)), seg.targets.unsafe_ptr()
+            )
+        if len(seg.queries) > 0:
+            ctx.enqueue_copy(
+                gpu.queries.create_sub_buffer[DType.uint8](q_base, len(seg.queries)), seg.queries.unsafe_ptr()
+            )
+        t_base += len(seg.targets)
+        q_base += len(seg.queries)
     ctx.enqueue_copy(gpu.shapes.create_sub_buffer[DType.int32](0, len(shapes)), shapes.unsafe_ptr())
     ctx.enqueue_copy(gpu.code_offsets.create_sub_buffer[DType.int64](0, count), code_offsets.unsafe_ptr())
     ctx.enqueue_copy(gpu.pair_ids.create_sub_buffer[DType.int32](0, count), by_slots.unsafe_ptr())
@@ -434,6 +483,15 @@ def ksw_lanes_gpu(
                 block_dim=_WARPS * WARP_SIZE,
             )
         start = group_ends[g]
+
+
+def collect(mut gpu: LanesGpu, mut cigars: List[List[UInt32]]) raises:
+    """Waits for the pairs `submit` started and gives their CIGARs (`length << 4 | op`, `M` `I` `D`), in order."""
+    var count = gpu.submitted
+    cigars.resize(count, List[UInt32]())
+    if count == 0:
+        return
+    ref ctx = gpu.context
     var total = List[Int32](length=1, fill=0)
     var places = List[Int32](length=2 * count, fill=0)
     ctx.enqueue_copy(total.unsafe_ptr(), gpu.used.create_sub_buffer[DType.int32](0, 1))
@@ -447,3 +505,31 @@ def ksw_lanes_gpu(
         cigar.clear()
         var at = Int(places[2 * l])
         cigar.extend(Span(ops)[at : at + Int(places[2 * l + 1])])
+    gpu.submitted = 0
+
+
+def ksw_lanes_gpu(
+    mut gpu: LanesGpu,
+    targets: ImmSpan[ImmPointer[UInt8, ImmUntrackedOrigin], _],
+    target_lengths: ImmSpan[Int, _],
+    queries: ImmSpan[ImmPointer[UInt8, ImmUntrackedOrigin], _],
+    query_lengths: ImmSpan[Int, _],
+    bands: ImmSpan[Int, _],
+    a: Int,
+    b: Int,
+    ambi: Int,
+    q: Int,
+    e: Int,
+    q2: Int,
+    e2: Int,
+    mut cigars: List[List[UInt32]],
+) raises:
+    """`ksw_lanes` for any number of pairs, each in its own band (`bands`, each pair `gpu_fits`), on the GPU: pair
+    `l`'s CIGAR into `cigars[l]` (`length << 4 | op`, `M` `I` `D`), the one `ksw_lanes` gives it alone in its band.
+    `submit` and `collect` in one, the pairs packed here."""
+    var segments = List[GpuSegment]()
+    segments.append(GpuSegment())
+    for l in range(len(targets)):
+        segments[0].add(targets[l], target_lengths[l], queries[l], query_lengths[l], bands[l])
+    submit(gpu, Span(segments), a, b, ambi, q, e, q2, e2)
+    collect(gpu, cigars)
