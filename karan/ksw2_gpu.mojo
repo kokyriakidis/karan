@@ -25,15 +25,20 @@ from max.gpu.sync import syncwarp
 
 from .ksw2_lanes import MAX_LANE_LENGTH, NEG
 
-comptime GPU_MAX_BAND = 256
-"""The most diagonals (`2 w`) a pair's band may span on the GPU; wider bands stay on the CPU."""
+comptime GPU_MAX_BAND = 384
+"""The most diagonals (`2 w`) a pair's band may span on the GPU; wider bands stay on the CPU. Wide bands take many
+registers a lane and few warps run; on herro2's chr19 alignments 384 balanced the GPU and the CPU best (256 left the
+CPU the wide bands, 512 made the GPU the slower)."""
 comptime _WARPS = 4
 """Warps of a block."""
 comptime PAIR_LANES = 32
 """Lanes a pair takes. 32 measured best on an RTX 2070: with 16 a lane held more diagonals (6 for a typical band of
 70 to 90) and the extra registers cost more warps than the busier lanes gained."""
-comptime _SLOT_CHOICES = 4
-"""Diagonals a lane may hold: 2, 4, 6, 8 (even, so a lane's diagonals start even), for bands of up to 256."""
+comptime _SLOT_CHOICES = 8
+"""Diagonals a lane may hold: 2, 4, ..., 16 (even, so a lane's diagonals start even); up to 12 within
+`GPU_MAX_BAND`."""
+comptime CODE_BUDGET = 1 << 30
+"""Bytes of codes on the GPU at once: the pairs of one `submit` run in rounds that fit it."""
 comptime _SHAPE = 6
 """Each pair's numbers: target letters' offset and count, query letters' offset and count, band `w`, CIGAR offset."""
 
@@ -390,6 +395,8 @@ def submit(
     var code_offsets = List[Int64](capacity=count)
     var bands = List[Int](capacity=count)
     var code_total = 0
+    var code_round = 0
+    var round_ends = List[Int]()
     var cigar_total = 0
     var t_base = 0
     var q_base = 0
@@ -406,13 +413,20 @@ def submit(
             shapes.append(Int32(w))
             shapes.append(Int32(cigar_total))
             bands.append(w)
-            # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16.
-            code_total = (code_total + 15) // 16 * 16
-            code_offsets.append(Int64(code_total))
-            code_total += ((n + m) // 2 + 2) * code_stride(w, _slots_for(w))
+            # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16; a new round when they would pass
+            # the budget, its codes from the start of the buffer again.
+            var size = ((n + m) // 2 + 2) * code_stride(w, _slots_for(w))
+            code_round = (code_round + 15) // 16 * 16
+            if code_round + size > CODE_BUDGET and code_round > 0:
+                round_ends.append(len(bands) - 1)  # this pair starts the next round
+                code_round = 0
+            code_offsets.append(Int64(code_round))
+            code_round += size
+            code_total = max(code_total, code_round)
             cigar_total += n + m + 1
         t_base += len(seg.targets)
         q_base += len(seg.queries)
+    round_ends.append(count)
     if len(gpu.targets) < t_total:
         gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](t_total)
     if len(gpu.queries) < q_total:
@@ -428,14 +442,17 @@ def submit(
     if len(gpu.scratch) < cigar_total:
         gpu.scratch = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
         gpu.cigars = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
-    # The pairs by how many diagonals a lane holds: the fewest that span its band.
+    # Round by round, the pairs by how many diagonals a lane holds: the fewest that span its band.
     var by_slots = List[Int32](capacity=count)
     var group_ends = List[Int]()
-    comptime for g in range(_SLOT_CHOICES):
-        for l in range(count):
-            if _slots_for(bands[l]) == 2 * (g + 1):
-                by_slots.append(Int32(l))
-        group_ends.append(len(by_slots))
+    var round_start = 0
+    for rnd in range(len(round_ends)):
+        comptime for g in range(_SLOT_CHOICES):
+            for l in range(round_start, round_ends[rnd]):
+                if _slots_for(bands[l]) == 2 * (g + 1):
+                    by_slots.append(Int32(l))
+            group_ends.append(len(by_slots))
+        round_start = round_ends[rnd]
     ref ctx = gpu.context
     t_base = 0
     q_base = 0
@@ -455,34 +472,37 @@ def submit(
     ctx.enqueue_copy(gpu.code_offsets.create_sub_buffer[DType.int64](0, count), code_offsets.unsafe_ptr())
     ctx.enqueue_copy(gpu.pair_ids.create_sub_buffer[DType.int32](0, count), by_slots.unsafe_ptr())
     ctx.enqueue_memset(gpu.used, Int32(0))
+    # The rounds one after another on the stream, each reusing the codes buffer.
     var start = 0
-    comptime for g in range(_SLOT_CHOICES):
-        comptime kernel = _gpu_kernel[2 * (g + 1)]
-        var group = group_ends[g] - start
-        if group > 0:
-            ctx.enqueue_function[kernel](
-                gpu.pair_ids.unsafe_ptr().unsafe_offset(start).unsafe_origin_cast[MutAnyOrigin](),
-                Int32(group),
-                gpu.targets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.queries.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.shapes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.code_offsets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.codes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.scratch.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.cigars.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.cigar_places.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                gpu.used.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                Int32(a),
-                Int32(b),
-                Int32(ambi),
-                Int32(q),
-                Int32(e),
-                Int32(q2),
-                Int32(e2),
-                grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
-                block_dim=_WARPS * WARP_SIZE,
-            )
-        start = group_ends[g]
+    for rnd in range(len(round_ends)):
+        comptime for g in range(_SLOT_CHOICES):
+            comptime kernel = _gpu_kernel[2 * (g + 1)]
+            var end = group_ends[rnd * _SLOT_CHOICES + g]
+            var group = end - start
+            if group > 0:
+                ctx.enqueue_function[kernel](
+                    gpu.pair_ids.unsafe_ptr().unsafe_offset(start).unsafe_origin_cast[MutAnyOrigin](),
+                    Int32(group),
+                    gpu.targets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.queries.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.shapes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.code_offsets.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.codes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.scratch.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.cigars.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.cigar_places.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    gpu.used.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    Int32(a),
+                    Int32(b),
+                    Int32(ambi),
+                    Int32(q),
+                    Int32(e),
+                    Int32(q2),
+                    Int32(e2),
+                    grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
+                    block_dim=_WARPS * WARP_SIZE,
+                )
+            start = end
 
 
 def collect(mut gpu: LanesGpu, mut cigars: List[List[UInt32]]) raises:
