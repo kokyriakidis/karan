@@ -557,6 +557,8 @@ struct LanesGpu(Movable):
     var used: DeviceBuffer[DType.int32]
     var submitted: Int
     """Pairs submitted and not yet collected."""
+    var code_budget: Int
+    """Bytes of codes on the GPU at once (`CODE_BUDGET` by default): a submit's pairs run in rounds that fit it."""
     var half: Bool
     """Whether the cells are computed two an instruction in fp16 (`_half_kernel`), or one in 32 bits (the
     default). Both give the same CIGARs. On an RTX 2070 the fp16 kernel is slower (0.06-0.08 s against 0.05 s for
@@ -564,8 +566,9 @@ struct LanesGpu(Movable):
     fp32. On an Apple M2 it is slower too (2.0 s against 1.1 s). It may pay where fp16x2 `max` is native (sm_80
     on)."""
 
-    def __init__(out self, gpu: Int = 0) raises:
+    def __init__(out self, gpu: Int = 0, code_budget: Int = CODE_BUDGET) raises:
         self.context = DeviceContext(device_id=gpu)
+        self.code_budget = code_budget
         self.targets = self.context.enqueue_create_buffer[DType.uint8](1)
         self.queries = self.context.enqueue_create_buffer[DType.uint8](1)
         self.shapes = self.context.enqueue_create_buffer[DType.int32](1)
@@ -677,7 +680,7 @@ def submit(
             # the budget, its codes from the start of the buffer again.
             var size = ((n + m) // 2 + 2) * code_stride(w, _group_slots(_group_of(w, gpu.half), gpu.half))
             code_round = (code_round + 15) // 16 * 16
-            if code_round + size > CODE_BUDGET and code_round > 0:
+            if code_round + size > gpu.code_budget and code_round > 0:
                 round_ends.append(len(bands) - 1)  # this pair starts the next round
                 code_round = 0
             code_offsets.append(Int64(code_round))

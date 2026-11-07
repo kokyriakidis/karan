@@ -15,8 +15,10 @@ Each cell keeps Gotoh's five scores as KSW2's difference recurrence implies them
 A gap of `k` letters costs `q + k e`, or `q2 + k e2`; a match earns `a`, a mismatch costs `b`, the wildcard (code 4)
 `ambi`. Its code byte is KSW2's: which source gave `H`, the diagonal before a deletion before an insertion, the
 first piece before the second, a later source only when strictly better; and in bits 3 to 6 whether the next cell's
-gap of each layer continues this one, only when strictly better than one opened here. The walk back is
-`ksw_backtrack` over rows.
+gap of each layer continues this one, only when strictly better than one opened here. A cell keeps it as the eight
+comparisons that make it, each a mask of the batch's lanes (`N` bits): building the bytes lane by lane took more
+than the cell's scores. The walk back is `ksw_backtrack` over rows, each step reading its lane's code from the
+masks.
 
 The band is KSW2's, the diagonals `-w + 1 ..= w` of target letters less query letters, one `w` for the batch, or
 each pair its own (`bands`, none wider than `w`): a pair's cells outside its own band are held at minus infinity,
@@ -25,6 +27,8 @@ batch. Cells outside the band are lost, as KSW2's are when its band is the whole
 alignment stays inside, which the caller checks (`touches_band`). Scores must stay within sixteen bits: pairs of up to
 `MAX_LANE_LENGTH` letters.
 """
+
+from std.memory import pack_bits
 
 comptime MAX_LANE_LENGTH = 6000
 """The longest side a pair may have: its scores, a match or a gap letter at a time, stay inside sixteen bits."""
@@ -47,6 +51,35 @@ struct LaneBuffers[N: Int](Movable):
         self.e2 = List[SIMD[DType.int16, Self.N]]()
         self.query = List[SIMD[DType.uint8, Self.N]]()
         self.codes = List[SIMD[DType.uint8, Self.N]]()
+
+
+@always_inline
+def _mask_type[N: Int]() -> DType:
+    """The unsigned integer of `N` bits, one a lane: a cell's eight comparison masks fill its `N` code bytes."""
+    comptime assert N == 8 or N == 16 or N == 32 or N == 64, "a batch of 8, 16, 32 or 64 lanes"
+    comptime if N == 8:
+        return DType.uint8
+    elif N == 16:
+        return DType.uint16
+    elif N == 32:
+        return DType.uint32
+    else:
+        return DType.uint64
+
+
+def _has_wildcard(letters: ImmPointer[UInt8, ImmUntrackedOrigin], length: Int) -> Bool:
+    """Whether the letters hold the wildcard, code 4."""
+    comptime W = 64
+    var k = 0
+    while k + W <= length:
+        if letters.unsafe_offset(k).unsafe_load[width=W]().eq(4).reduce_or():
+            return True
+        k += W
+    while k < length:
+        if letters[unsafe_offset=k] == 4:
+            return True
+        k += 1
+    return False
 
 
 @always_inline
@@ -149,7 +182,17 @@ def ksw_lanes[
     var e1 = buf.e1.unsafe_ptr()
     var e2p = buf.e2.unsafe_ptr()
     var qc = buf.query.unsafe_ptr()
-    var codes = buf.codes.unsafe_ptr()
+    # Wildcards are rare in reads: a batch without one scores its cells without the check. (Past a pair's end its
+    # lane holds the wildcard, but no cell of the pair's own matrix reads those cells.)
+    var wildcards = False
+    for l in range(lanes):
+        wildcards = (
+            wildcards or _has_wildcard(targets[l], target_lengths[l]) or _has_wildcard(queries[l], query_lengths[l])
+        )
+    comptime M = _mask_type[N]()
+    # A cell's code, as eight masks of `N` bits (one a lane): which comparisons made `H` (deletion, insertion, second
+    # deletion, second insertion) and which gaps go on, in the `N` bytes the cell has.
+    var codes = buf.codes.unsafe_ptr().unsafe_bitcast[Scalar[M]]()
     for i in range(1, n + 1):
         var tl = B(4)
         for l in range(lanes):
@@ -179,45 +222,53 @@ def ksw_lanes[
             e1[unsafe_offset=0] = d1
             e2p[unsafe_offset=0] = d2
             left = hv
-        var row = codes.unsafe_offset(i * width)
-        for j in range(max(lo, 1), hi + 1):
-            var up = h[unsafe_offset=j]
-            var qj = qc[unsafe_offset=j]
-            var sc = tl.eq(qj).select(match_, mismatch)
-            sc = (tl.eq(B(4)) | qj.eq(B(4))).select(wild, sc)
-            var z = diag + sc
-            var de1 = max(max(up - qe, e1[unsafe_offset=j] - ev), neg)
-            var de2 = max(max(up - qe2, e2p[unsafe_offset=j] - e2v), neg)
-            f1 = max(max(left - qe, f1 - ev), neg)
-            f2 = max(max(left - qe2, f2 - e2v), neg)
-            var d = B(0)
-            d = de1.gt(z).select(B(1), d)
-            z = max(z, de1)
-            d = f1.gt(z).select(B(2), d)
-            z = max(z, f1)
-            d = de2.gt(z).select(B(3), d)
-            z = max(z, de2)
-            d = f2.gt(z).select(B(4), d)
-            z = max(z, f2)
-            # Whether the next cell's gap of each layer continues this one.
-            d = d | de1.gt(z - qv).select(B(0x08), B(0))
-            d = d | f1.gt(z - qv).select(B(0x10), B(0))
-            d = d | de2.gt(z - q2v).select(B(0x20), B(0))
-            d = d | f2.gt(z - q2v).select(B(0x40), B(0))
-            row[unsafe_offset=j - i + w] = d
-            if j < i - narrowest or j > i + narrowest - 1:
-                # Outside some lane's own band: there the cell is minus infinity.
-                var inside = V(Int16(j)).ge(V(Int16(i)) - lane_w) & V(Int16(j)).le(V(Int16(i)) + lane_w - 1)
-                z = inside.select(z, neg)
-                de1 = inside.select(de1, neg)
-                de2 = inside.select(de2, neg)
-                f1 = inside.select(f1, neg)
-                f2 = inside.select(f2, neg)
-            diag = up
-            h[unsafe_offset=j] = z
-            e1[unsafe_offset=j] = de1
-            e2p[unsafe_offset=j] = de2
-            left = z
+        var row = codes.unsafe_offset(8 * i * width)
+        comptime for checked in range(2):
+            # The row's cells, with the wildcard check (`checked`) or without; one of the two runs.
+            if (checked == 1) != wildcards:
+                continue
+            for j in range(max(lo, 1), hi + 1):
+                var up = h[unsafe_offset=j]
+                var qj = qc[unsafe_offset=j]
+                var sc = tl.eq(qj).select(match_, mismatch)
+                comptime if checked == 1:
+                    sc = (tl.eq(B(4)) | qj.eq(B(4))).select(wild, sc)
+                var z = diag + sc
+                var de1 = max(max(up - qe, e1[unsafe_offset=j] - ev), neg)
+                var de2 = max(max(up - qe2, e2p[unsafe_offset=j] - e2v), neg)
+                f1 = max(max(left - qe, f1 - ev), neg)
+                f2 = max(max(left - qe2, f2 - e2v), neg)
+                var from_e1 = de1.gt(z)
+                z = max(z, de1)
+                var from_f1 = f1.gt(z)
+                z = max(z, f1)
+                var from_e2 = de2.gt(z)
+                z = max(z, de2)
+                var from_f2 = f2.gt(z)
+                z = max(z, f2)
+                # Whether the next cell's gap of each layer continues this one.
+                var cell = row.unsafe_offset(8 * (j - i + w))
+                cell[unsafe_offset=0] = pack_bits[M](from_e1)
+                cell[unsafe_offset=1] = pack_bits[M](from_f1)
+                cell[unsafe_offset=2] = pack_bits[M](from_e2)
+                cell[unsafe_offset=3] = pack_bits[M](from_f2)
+                cell[unsafe_offset=4] = pack_bits[M](de1.gt(z - qv))
+                cell[unsafe_offset=5] = pack_bits[M](f1.gt(z - qv))
+                cell[unsafe_offset=6] = pack_bits[M](de2.gt(z - q2v))
+                cell[unsafe_offset=7] = pack_bits[M](f2.gt(z - q2v))
+                if j < i - narrowest or j > i + narrowest - 1:
+                    # Outside some lane's own band: there the cell is minus infinity.
+                    var inside = V(Int16(j)).ge(V(Int16(i)) - lane_w) & V(Int16(j)).le(V(Int16(i)) + lane_w - 1)
+                    z = inside.select(z, neg)
+                    de1 = inside.select(de1, neg)
+                    de2 = inside.select(de2, neg)
+                    f1 = inside.select(f1, neg)
+                    f2 = inside.select(f2, neg)
+                diag = up
+                h[unsafe_offset=j] = z
+                e1[unsafe_offset=j] = de1
+                e2p[unsafe_offset=j] = de2
+                left = z
         # The cell just past the band holds nothing for the next row.
         if hi + 1 <= m:
             h[unsafe_offset=hi + 1] = neg
@@ -231,6 +282,7 @@ def ksw_lanes[
         var i = target_lengths[l]
         var j = query_lengths[l]
         var band = Int(lane_w[l])
+        var bit = Scalar[M](1) << Scalar[M](l)
         var state = 0
         while i > 0 and j > 0:
             var force_state = -1
@@ -238,17 +290,23 @@ def ksw_lanes[
                 force_state = 2
             if j > i + band - 1:
                 force_state = 1
-            var tmp = 0
-            if force_state < 0:
-                tmp = Int(codes[unsafe_offset=i * width + j - i + w][l])
-            if state == 0:
-                state = tmp & 7
-            elif ((tmp >> (state + 2)) & 1) == 0:
-                state = 0
-            if state == 0:
-                state = tmp & 7
             if force_state >= 0:
                 state = force_state
+            else:
+                # The lane's code, read from the cell's masks as far as the step needs it: whether the gap being
+                # walked goes on (its flag), and only off a gap the last source that won.
+                var cell = codes.unsafe_offset(8 * (i * width + j - i + w))
+                if state != 0 and (cell[unsafe_offset=3 + state] & bit) == 0:
+                    state = 0
+                if state == 0:
+                    if (cell[unsafe_offset=3] & bit) != 0:
+                        state = 4
+                    elif (cell[unsafe_offset=2] & bit) != 0:
+                        state = 3
+                    elif (cell[unsafe_offset=1] & bit) != 0:
+                        state = 2
+                    elif (cell[unsafe_offset=0] & bit) != 0:
+                        state = 1
             if state == 0:
                 _push(cigar, 0, 1)
                 i -= 1
