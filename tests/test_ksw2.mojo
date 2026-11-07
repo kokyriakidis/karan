@@ -15,6 +15,8 @@ from std.random import random_ui64, seed
 
 from karan.ksw2 import KSW_EZ_APPROX_MAX, KswBuffers, KswResult, ksw_extd2
 from karan.ksw2_lanes import LaneBuffers, ksw_lanes, touches_band
+from std.sys import has_accelerator
+from karan.ksw2_gpu import GPU_MAX_BAND, LanesGpu, ksw_lanes_gpu
 
 
 def _code(c: UInt8) -> UInt8:
@@ -188,6 +190,45 @@ def test_lane_bands_are_their_own() raises:
             var one_qn: List[Int] = [qn[k]]
             ksw_lanes[32](one_t, one_tn, one_q, one_qn, 2, 4, 1, 4, 2, 24, 1, bands[k], alone, single)
             assert_true(cigars[k] == single[0], String("pair ", k, " band ", bands[k], " of batch band ", w))
+        _ = len(ts)
+        _ = len(qs)
+
+
+def test_gpu_matches_lanes() raises:
+    """`ksw_lanes_gpu` gives every pair the CIGAR `ksw_lanes` gives it alone in its band: pieces of every length up to
+    600 and bands from tight (narrower than the length difference) to loose, in one call of 512 pairs."""
+    comptime if has_accelerator():
+        seed(23)
+        var gpu = LanesGpu()
+        var alone = LaneBuffers[32]()
+        var single = List[List[UInt32]]()
+        var ts = List[List[UInt8]]()
+        var qs = List[List[UInt8]]()
+        var tp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var qp = List[ImmPointer[UInt8, ImmUntrackedOrigin]]()
+        var tn = List[Int]()
+        var qn = List[Int]()
+        var bands = List[Int]()
+        for _ in range(512):
+            var p = _piece(1 + _draw(600), [0, 20, 40, 80][_draw(4)])
+            ts.append(p[0].copy())
+            qs.append(p[1].copy())
+        for k in range(512):
+            tp.append(ts[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            qp.append(qs[k].unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]())
+            tn.append(len(ts[k]))
+            qn.append(len(qs[k]))
+            var band = max(1, abs(len(ts[k]) - len(qs[k])) + [-4, 0, 8, 32][_draw(4)])
+            bands.append(min(band, GPU_MAX_BAND // 2))
+        var got = List[List[UInt32]]()
+        ksw_lanes_gpu(gpu, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, got)
+        for k in range(512):
+            var one_t: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [tp[k]]
+            var one_q: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [qp[k]]
+            var one_tn: List[Int] = [tn[k]]
+            var one_qn: List[Int] = [qn[k]]
+            ksw_lanes[32](one_t, one_tn, one_q, one_qn, 2, 4, 1, 4, 2, 24, 1, bands[k], alone, single)
+            assert_true(got[k] == single[0], String("pair ", k, " ", tn[k], " x ", qn[k], " band ", bands[k]))
         _ = len(ts)
         _ = len(qs)
 

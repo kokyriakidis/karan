@@ -24,6 +24,10 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   walk back of `ksw2`, so the same CIGARs wherever the band holds the alignment; twice as fast as `ksw2` on batches
   of like pieces. Each pair may have its own band (`bands`): its cells outside it held at minus infinity, so its
   CIGAR is the one its band gives alone, whatever pairs share its batch.
+- `karan.ksw2_gpu`: `ksw2_lanes` on a GPU (`ksw_lanes_gpu`): a warp a pair along its anti-diagonals, each lane a
+  block of the pair's own band in registers, the codes stored a pair of anti-diagonals at a time and walked back on
+  the GPU, so only CIGARs come home; every pair's CIGAR is the one `ksw_lanes` gives it alone in its band. About
+  18 G cells/s on an RTX 2070, against 10 G for `ksw_lanes` on 10 Skylake-X cores.
 
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
