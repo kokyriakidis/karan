@@ -238,9 +238,7 @@ def _gpu_kernel[
 
 
 @always_inline
-def _put[
-    direct: Bool
-](runs: MutPointer[UInt32, MutAnyOrigin], count: Int, room: Int, total: Int, word: UInt32):
+def _put[direct: Bool](runs: MutPointer[UInt32, MutAnyOrigin], count: Int, room: Int, total: Int, word: UInt32):
     """Run `count` of a walk back (they come last to first): into `runs[count]` while it has room, or, `direct`, into
     `runs[total - 1 - count]`, the CIGAR's place in order."""
     comptime if direct:
