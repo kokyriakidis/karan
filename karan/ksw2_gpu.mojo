@@ -767,15 +767,15 @@ def submit(
         q_base += len(seg.queries)
     gpu.host_code_offsets = List[Int64](length=count, fill=0)
     if len(gpu.targets) < t_total:
-        gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](t_total)
+        gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](_grown(len(gpu.targets), t_total))
     if len(gpu.queries) < q_total:
-        gpu.queries = gpu.context.enqueue_create_buffer[DType.uint8](q_total)
+        gpu.queries = gpu.context.enqueue_create_buffer[DType.uint8](_grown(len(gpu.queries), q_total))
     if len(gpu.shapes) < count * _SHAPE:
-        gpu.shapes = gpu.context.enqueue_create_buffer[DType.int32](count * _SHAPE)
-    if len(gpu.code_offsets) < count:
-        gpu.code_offsets = gpu.context.enqueue_create_buffer[DType.int64](count)
-        gpu.cigar_places = gpu.context.enqueue_create_buffer[DType.int32](2 * count)
-        gpu.pair_ids = gpu.context.enqueue_create_buffer[DType.int32](count)
+        var pairs = _grown(len(gpu.shapes) // _SHAPE, count)
+        gpu.shapes = gpu.context.enqueue_create_buffer[DType.int32](pairs * _SHAPE)
+        gpu.code_offsets = gpu.context.enqueue_create_buffer[DType.int64](pairs)
+        gpu.cigar_places = gpu.context.enqueue_create_buffer[DType.int32](2 * pairs)
+        gpu.pair_ids = gpu.context.enqueue_create_buffer[DType.int32](pairs)
     ref ctx = gpu.context
     t_base = 0
     q_base = 0
@@ -795,6 +795,11 @@ def submit(
     for l in range(count):
         all.append(l)
     _launch(gpu, all, gpu.run_room)
+
+
+def _grown(have: Int, need: Int) -> Int:
+    """A buffer's new length when it must hold `need`: half as much again as it had, if that is more."""
+    return max(need, have + have // 2)
 
 
 def _launch(mut gpu: LanesGpu, pairs: List[Int], room: Int) raises:
@@ -824,11 +829,14 @@ def _launch(mut gpu: LanesGpu, pairs: List[Int], room: Int) raises:
         gpu.host_shapes[_SHAPE * l + 5] = Int32(cigar_total)
         cigar_total += min(n + m + 1, room)
     round_ends.append(count)
+    # The codes at the whole budget at once (a wave's rounds fill it), the rest grown by half again: a buffer
+    # replaced stays with the allocator, so growing wave by wave to each one's need would keep every size it had.
     if len(gpu.codes) < code_total:
-        gpu.codes = gpu.context.enqueue_create_buffer[DType.uint8](code_total)
+        gpu.codes = gpu.context.enqueue_create_buffer[DType.uint8](max(code_total, gpu.code_budget))
     if len(gpu.scratch) < cigar_total:
-        gpu.scratch = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
-        gpu.cigars = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
+        var words = _grown(len(gpu.scratch), cigar_total)
+        gpu.scratch = gpu.context.enqueue_create_buffer[DType.uint32](words)
+        gpu.cigars = gpu.context.enqueue_create_buffer[DType.uint32](words)
     comptime if is_defined["KARAN_GPU_MEM"]():
         print(
             "[karan] launch: pairs",
@@ -841,6 +849,8 @@ def _launch(mut gpu: LanesGpu, pairs: List[Int], room: Int) raises:
             cigar_total,
             "held MB",
             Float64(len(gpu.targets) + len(gpu.queries) + len(gpu.codes) + 8 * len(gpu.scratch)) / 1e6,
+            "GPU free MB",
+            Int(gpu.context.get_memory_info()[0]) // 1000000,
             file=stderr,
         )
     # Round by round, the pairs by how many diagonals a lane holds: the fewest that span its band.
