@@ -235,10 +235,22 @@ def test_gpu_matches_lanes() raises:
         var got = List[List[UInt32]]()
         var got32 = List[List[UInt32]]()
         ksw_lanes_gpu(gpu, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, got32)
+        # Room for few runs a pair, on fresh buffers: with two, most pairs walk back again straight into the compact
+        # CIGARs and some find them full; with one, they fill at once and the rest are launched again.
+        var tight = List[List[UInt32]]()
+        var tighter = List[List[UInt32]]()
+        var fresh = LanesGpu()
+        fresh.run_room = 2
+        ksw_lanes_gpu(fresh, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, tight)
+        var fresher = LanesGpu()
+        fresher.run_room = 1
+        ksw_lanes_gpu(fresher, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, tighter)
         gpu.half = True
         ksw_lanes_gpu(gpu, Span(tp), Span(tn), Span(qp), Span(qn), Span(bands), 2, 4, 1, 4, 2, 24, 1, got)
         for k in range(512):
             assert_true(got32[k] == got[k], String("pair ", k, ": the fp16 and 32-bit kernels differ"))
+            assert_true(got32[k] == tight[k], String("pair ", k, ": walked back again, its CIGAR differs"))
+            assert_true(got32[k] == tighter[k], String("pair ", k, ": launched again with room, its CIGAR differs"))
             var one_t: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [tp[k]]
             var one_q: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [qp[k]]
             var one_tn: List[Int] = [tn[k]]

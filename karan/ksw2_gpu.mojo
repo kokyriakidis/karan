@@ -17,6 +17,7 @@ ones, so pairs of up to `MAX_LANE_LENGTH` letters align identically.
 
 from std.atomic import Atomic
 from std.math import ceildiv
+from std.sys import is_defined, stderr
 
 from max.gpu import WARP_SIZE, block_idx, lane_id, thread_idx
 from max.gpu.host import DeviceBuffer, DeviceContext
@@ -85,6 +86,8 @@ def _gpu_kernel[
     e: Int32,
     q2: Int32,
     e2: Int32,
+    room: Int32,
+    capacity: Int32,
 ):
     """One pair a warp, `K` of its band's diagonals a lane: its cells along anti-diagonals, then its walk back by lane
     0 into `scratch`, copied to the next free place in `cigars` (`used` counts them), its place and length to
@@ -219,38 +222,61 @@ def _gpu_kernel[
     if lane != 0 or not active:
         return
     _walk_back(
-        code, stride, n, m, w, scratch.unsafe_offset(Int(shape[unsafe_offset=5])), cigars, cigar_places, used, pair
+        code,
+        stride,
+        n,
+        m,
+        w,
+        scratch.unsafe_offset(Int(shape[unsafe_offset=5])),
+        cigars,
+        cigar_places,
+        used,
+        pair,
+        Int(room),
+        Int(capacity),
     )
 
 
 @always_inline
-def _walk_back(
+def _put[
+    direct: Bool
+](runs: MutPointer[UInt32, MutAnyOrigin], count: Int, room: Int, total: Int, word: UInt32):
+    """Run `count` of a walk back (they come last to first): into `runs[count]` while it has room, or, `direct`, into
+    `runs[total - 1 - count]`, the CIGAR's place in order."""
+    comptime if direct:
+        runs[unsafe_offset=total - 1 - count] = word
+    else:
+        if count < room:
+            runs[unsafe_offset=count] = word
+
+
+@always_inline
+def _walk[
+    direct: Bool
+](
     code: MutPointer[UInt8, MutAnyOrigin],
     stride: Int,
     n: Int,
     m: Int,
     w: Int,
     runs: MutPointer[UInt32, MutAnyOrigin],
-    cigars: MutPointer[UInt32, MutAnyOrigin],
-    cigar_places: MutPointer[Int32, MutAnyOrigin],
-    used: MutPointer[Int32, MutAnyOrigin],
-    pair: Int,
-):
+    room: Int,
+    total: Int,
+) -> Int:
     """A pair's walk back from its codes, `ksw_backtrack` by rows as `ksw2_lanes` walks it, the runs merged as they
-    come into `runs`, then reversed into the next free place of the compact CIGARs. The run being extended stays in
-    registers and goes to `runs` when the next one starts: read back from global memory, each step waited on the
-    one before."""
+    come and stored by `_put`; gives how many runs. The run being extended stays in registers and is stored when the
+    next one starts: read back from global memory, each step waited on the one before."""
     var count = 0
     var run_op = -1
     var run_length = 0
 
     @always_inline
-    def push(op: Int, length: Int) {mut count, mut run_op, mut run_length, imm runs}:
+    def push(op: Int, length: Int) {mut count, mut run_op, mut run_length, imm runs, imm room, imm total}:
         if op == run_op:
             run_length += length
         else:
             if run_op >= 0:
-                runs[unsafe_offset=count] = UInt32(run_length << 4 | run_op)
+                _put[direct](runs, count, room, total, UInt32(run_length << 4 | run_op))
                 count += 1
             run_op = op
             run_length = length
@@ -290,12 +316,41 @@ def _walk_back(
     if j > 0:
         push(1, j)
     if run_op >= 0:
-        runs[unsafe_offset=count] = UInt32(run_length << 4 | run_op)
+        _put[direct](runs, count, room, total, UInt32(run_length << 4 | run_op))
         count += 1
-    # Reversed into the next free place of the compact CIGARs.
+    return count
+
+
+@always_inline
+def _walk_back(
+    code: MutPointer[UInt8, MutAnyOrigin],
+    stride: Int,
+    n: Int,
+    m: Int,
+    w: Int,
+    runs: MutPointer[UInt32, MutAnyOrigin],
+    cigars: MutPointer[UInt32, MutAnyOrigin],
+    cigar_places: MutPointer[Int32, MutAnyOrigin],
+    used: MutPointer[Int32, MutAnyOrigin],
+    pair: Int,
+    room: Int,
+    capacity: Int,
+):
+    """A pair's walk back into `runs` (up to `room` of them), then reversed into the next free place of the compact
+    CIGARs (`used` counts them, `capacity` hold). A pair with more runs than `room` takes its place for all of them
+    and walks back again, straight into it in order; if the compact CIGARs are full, it is marked (its count -1) for
+    `collect` to launch again."""
+    var count = _walk[False](code, stride, n, m, w, runs, room, 0)
     var place = Int(Atomic.fetch_add(used, Int32(count)))
-    for k in range(count):
-        cigars[unsafe_offset=place + k] = runs[unsafe_offset=count - 1 - k]
+    if place + count > capacity:
+        cigar_places[unsafe_offset=2 * pair] = 0
+        cigar_places[unsafe_offset=2 * pair + 1] = -1
+        return
+    if count <= room:
+        for k in range(count):
+            cigars[unsafe_offset=place + k] = runs[unsafe_offset=count - 1 - k]
+    else:
+        _ = _walk[True](code, stride, n, m, w, cigars.unsafe_offset(place), room, count)
     cigar_places[unsafe_offset=2 * pair] = Int32(place)
     cigar_places[unsafe_offset=2 * pair + 1] = Int32(count)
 
@@ -325,6 +380,8 @@ def _half_kernel[
     e: Int32,
     q2: Int32,
     e2: Int32,
+    room: Int32,
+    capacity: Int32,
 ):
     """`_gpu_kernel` with its scores in fp16, two cells an instruction: a lane's diagonals as two vectors of `K / 2`,
     the even and the odd ones (a step's cells are all of one parity, so a step is one vector operation a formula), the
@@ -511,7 +568,18 @@ def _half_kernel[
     if lane != 0 or not active:
         return
     _walk_back(
-        code, stride, n, m, w, scratch.unsafe_offset(Int(shape[unsafe_offset=5])), cigars, cigar_places, used, pair
+        code,
+        stride,
+        n,
+        m,
+        w,
+        scratch.unsafe_offset(Int(shape[unsafe_offset=5])),
+        cigars,
+        cigar_places,
+        used,
+        pair,
+        Int(room),
+        Int(capacity),
     )
 
 
@@ -567,6 +635,13 @@ struct LanesGpu(Movable):
     var used: DeviceBuffer[DType.int32]
     var submitted: Int
     """Pairs submitted and not yet collected."""
+    var host_shapes: List[Int32]
+    """The submitted pairs' numbers (`_SHAPE` a pair), kept for `collect` to launch some again."""
+    var host_code_offsets: List[Int64]
+    var scores: List[Int]
+    """The submitted pairs' scores: a, b, ambi, q, e, q2, e2 (the cheaper gap piece first)."""
+    var run_room: Int
+    """Runs a pair's walk back may write when first launched (`RUN_ROOM`; a test may make it tiny)."""
     var code_budget: Int
     """Bytes of codes on the GPU at once (`CODE_BUDGET` by default): a submit's pairs run in rounds that fit it."""
     var half: Bool
@@ -590,6 +665,10 @@ struct LanesGpu(Movable):
         self.pair_ids = self.context.enqueue_create_buffer[DType.int32](1)
         self.used = self.context.enqueue_create_buffer[DType.int32](1)
         self.submitted = 0
+        self.host_shapes = List[Int32]()
+        self.host_code_offsets = List[Int64]()
+        self.scores = List[Int]()
+        self.run_room = RUN_ROOM
         self.half = False
 
 
@@ -628,6 +707,13 @@ struct GpuSegment(Movable, Sized):
         return len(self.shapes) // 5
 
 
+comptime RUN_ROOM = 256
+"""Runs a pair's walk back holds before it reverses them into the compact CIGARs: a CIGAR almost always fits
+(herro2's stretches take about 21), so the walk back's and the CIGARs' buffers hold this much a pair, not a run a
+letter (a wave's 1.3 GB became tens of MB). A pair with more walks back a second time, straight into the compact
+CIGARs, which the short ones leave mostly free; only when those are full is it launched again by `collect`."""
+
+
 def submit(
     mut gpu: LanesGpu,
     segments: ImmSpan[GpuSegment, _],
@@ -652,6 +738,7 @@ def submit(
         var te = e
         e = e2
         e2 = te
+    gpu.scores = [a, b, ambi, q, e, q2, e2]
     var count = 0
     var t_total = 0
     var q_total = 0
@@ -663,69 +750,32 @@ def submit(
     gpu.submitted = count
     if count == 0:
         return
-    # Each pair's numbers with the segments' letters end to end, and where its codes and CIGAR go.
-    var shapes = List[Int32](capacity=count * _SHAPE)
-    var code_offsets = List[Int64](capacity=count)
-    var bands = List[Int](capacity=count)
-    var code_total = 0
-    var code_round = 0
-    var round_ends = List[Int]()
-    var cigar_total = 0
+    # Each pair's numbers with the segments' letters end to end (where its CIGAR goes, `_launch` decides).
+    gpu.host_shapes = List[Int32](capacity=count * _SHAPE)
     var t_base = 0
     var q_base = 0
     for si in range(len(segments)):
         ref seg = segments[si]
         for p in range(len(seg)):
-            var n = Int(seg.shapes[5 * p + 1])
-            var m = Int(seg.shapes[5 * p + 3])
-            var w = Int(seg.shapes[5 * p + 4])
-            shapes.append(Int32(t_base) + seg.shapes[5 * p])
-            shapes.append(Int32(n))
-            shapes.append(Int32(q_base) + seg.shapes[5 * p + 2])
-            shapes.append(Int32(m))
-            shapes.append(Int32(w))
-            shapes.append(Int32(cigar_total))
-            bands.append(w)
-            # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16; a new round when they would pass
-            # the budget, its codes from the start of the buffer again.
-            var size = ((n + m) // 2 + 2) * code_stride(w, _group_slots(_group_of(w, gpu.half), gpu.half))
-            code_round = (code_round + 15) // 16 * 16
-            if code_round + size > gpu.code_budget and code_round > 0:
-                round_ends.append(len(bands) - 1)  # this pair starts the next round
-                code_round = 0
-            code_offsets.append(Int64(code_round))
-            code_round += size
-            code_total = max(code_total, code_round)
-            cigar_total += n + m + 1
+            gpu.host_shapes.append(Int32(t_base) + seg.shapes[5 * p])
+            gpu.host_shapes.append(seg.shapes[5 * p + 1])
+            gpu.host_shapes.append(Int32(q_base) + seg.shapes[5 * p + 2])
+            gpu.host_shapes.append(seg.shapes[5 * p + 3])
+            gpu.host_shapes.append(seg.shapes[5 * p + 4])
+            gpu.host_shapes.append(0)
         t_base += len(seg.targets)
         q_base += len(seg.queries)
-    round_ends.append(count)
+    gpu.host_code_offsets = List[Int64](length=count, fill=0)
     if len(gpu.targets) < t_total:
         gpu.targets = gpu.context.enqueue_create_buffer[DType.uint8](t_total)
     if len(gpu.queries) < q_total:
         gpu.queries = gpu.context.enqueue_create_buffer[DType.uint8](q_total)
-    if len(gpu.shapes) < len(shapes):
-        gpu.shapes = gpu.context.enqueue_create_buffer[DType.int32](len(shapes))
+    if len(gpu.shapes) < count * _SHAPE:
+        gpu.shapes = gpu.context.enqueue_create_buffer[DType.int32](count * _SHAPE)
     if len(gpu.code_offsets) < count:
         gpu.code_offsets = gpu.context.enqueue_create_buffer[DType.int64](count)
         gpu.cigar_places = gpu.context.enqueue_create_buffer[DType.int32](2 * count)
         gpu.pair_ids = gpu.context.enqueue_create_buffer[DType.int32](count)
-    if len(gpu.codes) < code_total:
-        gpu.codes = gpu.context.enqueue_create_buffer[DType.uint8](code_total)
-    if len(gpu.scratch) < cigar_total:
-        gpu.scratch = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
-        gpu.cigars = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
-    # Round by round, the pairs by how many diagonals a lane holds: the fewest that span its band.
-    var by_slots = List[Int32](capacity=count)
-    var group_ends = List[Int]()
-    var round_start = 0
-    for rnd in range(len(round_ends)):
-        comptime for g in range(_SLOT_CHOICES):
-            for l in range(round_start, round_ends[rnd]):
-                if _group_of(bands[l], gpu.half) == g:
-                    by_slots.append(Int32(l))
-            group_ends.append(len(by_slots))
-        round_start = round_ends[rnd]
     ref ctx = gpu.context
     t_base = 0
     q_base = 0
@@ -741,8 +791,76 @@ def submit(
             )
         t_base += len(seg.targets)
         q_base += len(seg.queries)
-    ctx.enqueue_copy(gpu.shapes.create_sub_buffer[DType.int32](0, len(shapes)), shapes.unsafe_ptr())
-    ctx.enqueue_copy(gpu.code_offsets.create_sub_buffer[DType.int64](0, count), code_offsets.unsafe_ptr())
+    var all = List[Int](capacity=count)
+    for l in range(count):
+        all.append(l)
+    _launch(gpu, all, gpu.run_room)
+
+
+def _launch(mut gpu: LanesGpu, pairs: List[Int], room: Int) raises:
+    """Launches the submitted pairs `pairs` (indices into what `submit` was given): their codes in rounds within the
+    budget, each round's pairs by how many diagonals a lane holds, each pair's walk back with room for the less of
+    `room` runs and one a letter."""
+    var count = len(pairs)
+    var code_total = 0
+    var code_round = 0
+    var round_ends = List[Int]()
+    var cigar_total = 0
+    for k in range(count):
+        var l = pairs[k]
+        var n = Int(gpu.host_shapes[_SHAPE * l + 1])
+        var m = Int(gpu.host_shapes[_SHAPE * l + 3])
+        var w = Int(gpu.host_shapes[_SHAPE * l + 4])
+        # Each pair's codes 16-byte aligned, for its lanes' stores of up to 16; a new round when they would pass the
+        # budget, its codes from the start of the buffer again.
+        var size = ((n + m) // 2 + 2) * code_stride(w, _group_slots(_group_of(w, gpu.half), gpu.half))
+        code_round = (code_round + 15) // 16 * 16
+        if code_round + size > gpu.code_budget and code_round > 0:
+            round_ends.append(k)  # this pair starts the next round
+            code_round = 0
+        gpu.host_code_offsets[l] = Int64(code_round)
+        code_round += size
+        code_total = max(code_total, code_round)
+        gpu.host_shapes[_SHAPE * l + 5] = Int32(cigar_total)
+        cigar_total += min(n + m + 1, room)
+    round_ends.append(count)
+    if len(gpu.codes) < code_total:
+        gpu.codes = gpu.context.enqueue_create_buffer[DType.uint8](code_total)
+    if len(gpu.scratch) < cigar_total:
+        gpu.scratch = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
+        gpu.cigars = gpu.context.enqueue_create_buffer[DType.uint32](cigar_total)
+    comptime if is_defined["KARAN_GPU_MEM"]():
+        print(
+            "[karan] launch: pairs",
+            count,
+            "room",
+            room,
+            "codes MB",
+            Float64(code_total) / 1e6,
+            "run words",
+            cigar_total,
+            "held MB",
+            Float64(len(gpu.targets) + len(gpu.queries) + len(gpu.codes) + 8 * len(gpu.scratch)) / 1e6,
+            file=stderr,
+        )
+    # Round by round, the pairs by how many diagonals a lane holds: the fewest that span its band.
+    var by_slots = List[Int32](capacity=count)
+    var group_ends = List[Int]()
+    var round_start = 0
+    for rnd in range(len(round_ends)):
+        comptime for g in range(_SLOT_CHOICES):
+            for k in range(round_start, round_ends[rnd]):
+                var l = pairs[k]
+                if _group_of(Int(gpu.host_shapes[_SHAPE * l + 4]), gpu.half) == g:
+                    by_slots.append(Int32(l))
+            group_ends.append(len(by_slots))
+        round_start = round_ends[rnd]
+    ref ctx = gpu.context
+    ctx.enqueue_copy(gpu.shapes.create_sub_buffer[DType.int32](0, len(gpu.host_shapes)), gpu.host_shapes.unsafe_ptr())
+    ctx.enqueue_copy(
+        gpu.code_offsets.create_sub_buffer[DType.int64](0, len(gpu.host_code_offsets)),
+        gpu.host_code_offsets.unsafe_ptr(),
+    )
     ctx.enqueue_copy(gpu.pair_ids.create_sub_buffer[DType.int32](0, count), by_slots.unsafe_ptr())
     ctx.enqueue_memset(gpu.used, Int32(0))
     # The rounds one after another on the stream, each reusing the codes buffer.
@@ -766,13 +884,15 @@ def submit(
                     gpu.cigars.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
                     gpu.cigar_places.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
                     gpu.used.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                    Int32(a),
-                    Int32(b),
-                    Int32(ambi),
-                    Int32(q),
-                    Int32(e),
-                    Int32(q2),
-                    Int32(e2),
+                    Int32(gpu.scores[0]),
+                    Int32(gpu.scores[1]),
+                    Int32(gpu.scores[2]),
+                    Int32(gpu.scores[3]),
+                    Int32(gpu.scores[4]),
+                    Int32(gpu.scores[5]),
+                    Int32(gpu.scores[6]),
+                    Int32(room),
+                    Int32(len(gpu.cigars)),
                     grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
                     block_dim=_WARPS * WARP_SIZE,
                 )
@@ -789,13 +909,15 @@ def submit(
                     gpu.cigars.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
                     gpu.cigar_places.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
                     gpu.used.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                    Int32(a),
-                    Int32(b),
-                    Int32(ambi),
-                    Int32(q),
-                    Int32(e),
-                    Int32(q2),
-                    Int32(e2),
+                    Int32(gpu.scores[0]),
+                    Int32(gpu.scores[1]),
+                    Int32(gpu.scores[2]),
+                    Int32(gpu.scores[3]),
+                    Int32(gpu.scores[4]),
+                    Int32(gpu.scores[5]),
+                    Int32(gpu.scores[6]),
+                    Int32(room),
+                    Int32(len(gpu.cigars)),
                     grid_dim=ceildiv(group, _WARPS * WARP_SIZE // PAIR_LANES),
                     block_dim=_WARPS * WARP_SIZE,
                 )
@@ -803,26 +925,55 @@ def submit(
 
 
 def collect(mut gpu: LanesGpu, mut cigars: List[List[UInt32]]) raises:
-    """Waits for the pairs `submit` started and gives their CIGARs (`length << 4 | op`, `M` `I` `D`), in order."""
+    """Waits for the pairs `submit` started and gives their CIGARs (`length << 4 | op`, `M` `I` `D`), in order. A pair
+    whose CIGAR did not fit in the compact buffer is launched again, with room for all its runs, and waited for too."""
     var count = gpu.submitted
     cigars.resize(count, List[UInt32]())
     if count == 0:
         return
+    var places = List[Int32](length=2 * count, fill=-2)
+    var again = List[Int]()
+    _gather(gpu, places, cigars, count, again)
+    if len(again) > 0:
+        var pairs = again.copy()
+        _launch(gpu, pairs, Int(Int32.MAX))
+        again.clear()
+        _gather(gpu, places, cigars, count, again)
+        if len(again) > 0:
+            raise Error("ksw2_gpu: a walk back ran out of room with room for every letter")
+    gpu.submitted = 0
+
+
+def _gather(
+    mut gpu: LanesGpu, mut places: List[Int32], mut cigars: List[List[UInt32]], count: Int, mut again: List[Int]
+) raises:
+    """Waits for the launched pairs and takes their CIGARs out of the compact buffer; the pairs marked out of room
+    go to `again`. A pair not launched this time keeps the CIGAR it has."""
     ref ctx = gpu.context
     var total = List[Int32](length=1, fill=0)
-    var places = List[Int32](length=2 * count, fill=0)
+    var fresh = List[Int32](length=2 * count, fill=-2)
     ctx.enqueue_copy(total.unsafe_ptr(), gpu.used.create_sub_buffer[DType.int32](0, 1))
-    ctx.enqueue_copy(places.unsafe_ptr(), gpu.cigar_places.create_sub_buffer[DType.int32](0, 2 * count))
+    ctx.enqueue_copy(fresh.unsafe_ptr(), gpu.cigar_places.create_sub_buffer[DType.int32](0, 2 * count))
     ctx.synchronize()
-    var ops = List[UInt32](length=max(Int(total[0]), 1), fill=0)
-    ctx.enqueue_copy(ops.unsafe_ptr(), gpu.cigars.create_sub_buffer[DType.uint32](0, max(Int(total[0]), 1)))
+    comptime if is_defined["KARAN_GPU_MEM"]():
+        print("[karan] collect: pairs", count, "compact words used", Int(total[0]), "of", len(gpu.cigars), file=stderr)
+    # `used` counts the places the pairs that did not fit asked for too.
+    var words = max(min(Int(total[0]), len(gpu.cigars)), 1)
+    var ops = List[UInt32](length=words, fill=0)
+    ctx.enqueue_copy(ops.unsafe_ptr(), gpu.cigars.create_sub_buffer[DType.uint32](0, words))
     ctx.synchronize()
     for l in range(count):
+        if places[2 * l + 1] >= 0 and fresh[2 * l + 1] == places[2 * l + 1] and fresh[2 * l] == places[2 * l]:
+            continue
+        places[2 * l] = fresh[2 * l]
+        places[2 * l + 1] = fresh[2 * l + 1]
+        if fresh[2 * l + 1] < 0:
+            again.append(l)
+            continue
         ref cigar = cigars[l]
         cigar.clear()
-        var at = Int(places[2 * l])
-        cigar.extend(Span(ops)[at : at + Int(places[2 * l + 1])])
-    gpu.submitted = 0
+        var at = Int(fresh[2 * l])
+        cigar.extend(Span(ops)[at : at + Int(fresh[2 * l + 1])])
 
 
 def ksw_lanes_gpu(
