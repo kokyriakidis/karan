@@ -25,7 +25,7 @@ Its band is KSW2's, `w` diagonals either side of the main one, and nothing else:
 whose edge moves otherwise than KSW2's reads cells it never computed, and the scores inside it go wrong.
 """
 
-from std.memory import memset
+from std.memory import unsafe_memcpy, unsafe_memset
 
 comptime KSW_NEG_INF = -0x40000000
 comptime KSW_EZ_SCORE_ONLY = 0x01
@@ -184,13 +184,34 @@ def _backtrack(mut ez: KswResult, buf: KswBuffers, n_col: Int, i0: Int, j0: Int,
 
 
 @always_inline
+def _lanes_below[W: Int](count: Int) -> SIMD[DType.bool, W]:
+    """The first `count` lanes of `W`."""
+    var lanes = SIMD[DType.int32, W]()
+    comptime for k in range(W):
+        lanes[k] = Int32(k)
+    return lanes.lt(SIMD[DType.int32, W](Int32(count)))
+
+
+@always_inline
+def _keep[L: Int, W: Int](computed: SIMD[DType.int8, W], old: SIMD[DType.int8, W], cells: Int) -> SIMD[DType.int8, W]:
+    """A piece's new values in its first `cells` lanes, and past them what the arrays held: the cells an `L`-wide
+    vector would not have reached keep their stale values, as in the C."""
+    comptime if W == L:
+        return computed
+    else:
+        if cells >= W:
+            return computed
+        return _lanes_below[W](cells).select(computed, old)
+
+
+@always_inline
 def _resize[T: Copyable & Deinitable](mut buf: List[T], n: Int, value: T):
     if len(buf) < n:
         buf.resize(n, value)
 
 
 def ksw_extd2[
-    L: Int = 16
+    L: Int = 16, W: Int = L
 ](
     query: Span[UInt8, _],
     target: Span[UInt8, _],
@@ -207,8 +228,14 @@ def ksw_extd2[
     mut buf: KswBuffers,
     mut ez: KswResult,
 ):
-    """`ksw_extd2_sse(km, qlen, query, tlen, target, m, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, ez)`."""
-    comptime V = SIMD[DType.int8, L]
+    """`ksw_extd2_sse(km, qlen, query, tlen, target, m, mat, q, e, q2, e2, w, zdrop, end_bonus, flag, ez)`.
+
+    `L` is the vector width the results follow: the cells an anti-diagonal computes past the band's edge are those of
+    whole `L`-wide vectors, as the C's (16, SSE) are. `W`, a multiple of `L`, is how many cells one instruction
+    computes: an anti-diagonal's cells depend only on the one before, so its `L`-rounded range runs `W` at a time, the
+    last piece storing nothing past it; `ksw_extd2[16, 64]` gives the C's results at AVX-512's width."""
+    comptime assert W % L == 0, "W computes whole L-wide vectors"
+    comptime V = SIMD[DType.int8, W]
     ez.reset()
     var qlen = len(query)
     var tlen = len(target)
@@ -240,7 +267,7 @@ def ksw_extd2[
     var sc_mch_ = V(sc_mch)
     var sc_mis_ = V(sc_mis)
     var sc_n_ = V(sc_n)
-    var m1_ = SIMD[DType.uint8, L](UInt8(m - 1))
+    var m1_ = SIMD[DType.uint8, W](UInt8(m - 1))
 
     var w = w_in
     if w < 0:
@@ -264,8 +291,9 @@ def ksw_extd2[
         long_thres += 1
     var long_diff = long_thres * (e - e2) - (q2 - q) - e2
 
-    # The arrays, one vector past the last cell so a vector's tail may be loaded and stored.
-    var n = tlen_ * L + L
+    # The arrays, a `W` vector past the last cell so a vector's tail may be loaded, and one before the first so the
+    # cell before a range always exists (see the core loop).
+    var n = W + tlen_ * L + W
     _resize(buf.u, n, Int8(0))
     _resize(buf.v, n, Int8(0))
     _resize(buf.x, n, Int8(0))
@@ -273,41 +301,52 @@ def ksw_extd2[
     _resize(buf.x2, n, Int8(0))
     _resize(buf.y2, n, Int8(0))
     _resize(buf.s, n, Int8(0))
-    var u = buf.u.unsafe_ptr()
-    var v = buf.v.unsafe_ptr()
-    var x = buf.x.unsafe_ptr()
-    var y = buf.y.unsafe_ptr()
-    var x2 = buf.x2.unsafe_ptr()
-    var y2 = buf.y2.unsafe_ptr()
-    var s = buf.s.unsafe_ptr()
-    for k in range(n):
-        u[unsafe_offset=k] = Int8(-q - e)
-        v[unsafe_offset=k] = Int8(-q - e)
-        x[unsafe_offset=k] = Int8(-q - e)
-        y[unsafe_offset=k] = Int8(-q - e)
-        x2[unsafe_offset=k] = Int8(-q2 - e2)
-        y2[unsafe_offset=k] = Int8(-q2 - e2)
-        s[unsafe_offset=k] = 0
+    var u = buf.u.unsafe_ptr().unsafe_offset(W)
+    var v = buf.v.unsafe_ptr().unsafe_offset(W)
+    var x = buf.x.unsafe_ptr().unsafe_offset(W)
+    var y = buf.y.unsafe_ptr().unsafe_offset(W)
+    var x2 = buf.x2.unsafe_ptr().unsafe_offset(W)
+    var y2 = buf.y2.unsafe_ptr().unsafe_offset(W)
+    var s = buf.s.unsafe_ptr().unsafe_offset(W)
+    # Each array starts as one byte throughout.
+    unsafe_memset(buf.u.unsafe_ptr(), UInt8(Int8(-q - e)), n)
+    unsafe_memset(buf.v.unsafe_ptr(), UInt8(Int8(-q - e)), n)
+    unsafe_memset(buf.x.unsafe_ptr(), UInt8(Int8(-q - e)), n)
+    unsafe_memset(buf.y.unsafe_ptr(), UInt8(Int8(-q - e)), n)
+    unsafe_memset(buf.x2.unsafe_ptr(), UInt8(Int8(-q2 - e2)), n)
+    unsafe_memset(buf.y2.unsafe_ptr(), UInt8(Int8(-q2 - e2)), n)
+    unsafe_memset(buf.s.unsafe_ptr(), 0, n)
     # The target, then the reversed query, zero past each, as the C's one zeroed block lays them.
     var sf_n = tlen_ * L
     var qr_n = (qlen_ + 1) * L
-    _resize(buf.sfqr, sf_n + qr_n + L, UInt8(0))
+    _resize(buf.sfqr, sf_n + qr_n + W, UInt8(0))
     var sf = buf.sfqr.unsafe_ptr()
-    for k in range(sf_n + qr_n + L):
-        sf[unsafe_offset=k] = 0
-    for k in range(tlen):
-        sf[unsafe_offset=k] = target[k]
+    unsafe_memset(sf, 0, sf_n + qr_n + W)
+    unsafe_memcpy(dest=sf, src=target.unsafe_ptr(), count=tlen)
     var qr = sf.unsafe_offset(sf_n)
-    for k in range(qlen):
-        qr[unsafe_offset=k] = query[qlen - 1 - k]
+    # The query back to front, 64 letters at a time.
+    var qp = query.unsafe_ptr()
+    var k = 0
+    while k + 64 <= qlen:
+        qr.unsafe_offset(qlen - k - 64).unsafe_store(qp.unsafe_offset(k).unsafe_load[width=64]().reversed())
+        k += 64
+    while k < qlen:
+        qr[unsafe_offset=qlen - 1 - k] = qp[unsafe_offset=k]
+        k += 1
     var h = buf.h.unsafe_ptr()
     if not approx_max:
-        _resize(buf.h, tlen_ * L + 4, Int32(0))
+        _resize(buf.h, tlen_ * L + 16, Int32(0))
         h = buf.h.unsafe_ptr()
-        for k in range(tlen_ * L):
-            h[unsafe_offset=k] = Int32(KSW_NEG_INF)
+        var neg16 = SIMD[DType.int32, 16](Int32(KSW_NEG_INF))
+        var hk = 0
+        while hk + 16 <= tlen_ * L:
+            h.unsafe_offset(hk).unsafe_store(neg16)
+            hk += 16
+        while hk < tlen_ * L:
+            h[unsafe_offset=hk] = Int32(KSW_NEG_INF)
+            hk += 1
     if with_cigar:
-        _resize(buf.p, (qlen + tlen - 1) * n_col_ * L + L, UInt8(0))
+        _resize(buf.p, (qlen + tlen - 1) * n_col_ * L + W, UInt8(0))
         _resize(buf.off, qlen + tlen - 1, 0)
         _resize(buf.off_end, qlen + tlen - 1, 0)
     var p = buf.p.unsafe_ptr()
@@ -366,44 +405,51 @@ def ksw_extd2[
             )
         # The scores, from the first cell on in whole vectors, as the C stores them.
         var qrr = qr.unsafe_offset(qlen - 1 - r)
+        var s_end = st0 + ((en0 - st0) // L + 1) * L
         var t = st0
-        while t <= en0:
-            var sq = sf.unsafe_offset(t).unsafe_load[width=L]()
-            var sr = qrr.unsafe_offset(t).unsafe_load[width=L]()
+        while t < s_end:
+            var sq = sf.unsafe_offset(t).unsafe_load[width=W]()
+            var sr = qrr.unsafe_offset(t).unsafe_load[width=W]()
             var wild = sq.eq(m1_) | sr.eq(m1_)
-            var sc = sq.eq(sr).select(sc_mch_, sc_mis_)
-            s.unsafe_offset(t).unsafe_store(wild.select(sc_n_, sc))
-            t += L
+            var sc = wild.select(sc_n_, sq.eq(sr).select(sc_mch_, sc_mis_))
+            comptime if W > L:
+                if s_end - t < W:
+                    sc = _lanes_below[W](s_end - t).select(sc, s.unsafe_offset(t).unsafe_load[width=W]())
+            s.unsafe_offset(t).unsafe_store(sc)
+            t += W
         # The core loop.
-        var x1_ = x1
-        var x21_ = x21
-        var v1_ = v1
-        var st_ = st // L
-        var en_ = en // L
-        var pr = p.unsafe_offset(r * n_col_ * L - st_ * L)
+        var pr = p.unsafe_offset(r * n_col_ * L - st)
         if with_cigar:
             buf.off[r] = st
             buf.off_end[r] = en
-        for tv in range(st_, en_ + 1):
-            var at = tv * L
-            var z = s.unsafe_offset(at).unsafe_load[width=L]()
-            var xo = x.unsafe_offset(at).unsafe_load[width=L]()
-            var xt1 = xo.shift_right[1]()
-            xt1[0] = x1_
-            x1_ = xo[L - 1]
-            var vo = v.unsafe_offset(at).unsafe_load[width=L]()
-            var vt1 = vo.shift_right[1]()
-            vt1[0] = v1_
-            v1_ = vo[L - 1]
+        # Each cell reads the cell before it (`x`, `v`, `x2`) as it was: the pieces run last to first, so a piece's
+        # load one cell early reads cells no piece has written yet; the cell before the range holds the boundary
+        # values meanwhile, and gets its own back after (a stale cell the C keeps).
+        var kept_x = x[unsafe_offset=st - 1]
+        var kept_v = v[unsafe_offset=st - 1]
+        var kept_x2 = x2[unsafe_offset=st - 1]
+        x[unsafe_offset=st - 1] = x1
+        v[unsafe_offset=st - 1] = v1
+        x2[unsafe_offset=st - 1] = x21
+        var at = st + (en - st) // W * W
+        while at >= st:
+            # A piece of `W` cells; the first done, the last, may hold cells past `en`, which keep what they held
+            # (see `_keep`).
+            var z = s.unsafe_offset(at).unsafe_load[width=W]()
+            var xo = x.unsafe_offset(at).unsafe_load[width=W]()
+            var xt1 = x.unsafe_offset(at - 1).unsafe_load[width=W]()
+            var vo = v.unsafe_offset(at).unsafe_load[width=W]()
+            var vt1 = v.unsafe_offset(at - 1).unsafe_load[width=W]()
             var a = xt1 + vt1
-            var ut = u.unsafe_offset(at).unsafe_load[width=L]()
-            var b = y.unsafe_offset(at).unsafe_load[width=L]() + ut
-            var x2o = x2.unsafe_offset(at).unsafe_load[width=L]()
-            var x2t1 = x2o.shift_right[1]()
-            x2t1[0] = x21_
-            x21_ = x2o[L - 1]
+            var ut = u.unsafe_offset(at).unsafe_load[width=W]()
+            var yo = y.unsafe_offset(at).unsafe_load[width=W]()
+            var b = yo + ut
+            var x2o = x2.unsafe_offset(at).unsafe_load[width=W]()
+            var x2t1 = x2.unsafe_offset(at - 1).unsafe_load[width=W]()
             var a2 = x2t1 + vt1
-            var b2 = y2.unsafe_offset(at).unsafe_load[width=L]() + ut
+            var y2o = y2.unsafe_offset(at).unsafe_load[width=W]()
+            var b2 = y2o + ut
+            var cells = en - at + 1
             var d = V(0)
             if not with_cigar:
                 z = max(z, a)
@@ -432,8 +478,8 @@ def ksw_extd2[
                 z = max(z, b2)
                 z = min(z, sc_mch_)
             # Save u and v; turn a, b, a2, b2 into what a run through each layer costs the next cell.
-            u.unsafe_offset(at).unsafe_store(z - vt1)
-            v.unsafe_offset(at).unsafe_store(z - ut)
+            u.unsafe_offset(at).unsafe_store(_keep[L](z - vt1, ut, cells))
+            v.unsafe_offset(at).unsafe_store(_keep[L](z - ut, vo, cells))
             var tmp = z - q_
             a = a - tmp
             b = b - tmp
@@ -445,10 +491,10 @@ def ksw_extd2[
                 var kb = b.gt(zero_)
                 var ka2 = a2.gt(zero_)
                 var kb2 = b2.gt(zero_)
-                x.unsafe_offset(at).unsafe_store(ka.select(a, zero_) - qe_)
-                y.unsafe_offset(at).unsafe_store(kb.select(b, zero_) - qe_)
-                x2.unsafe_offset(at).unsafe_store(ka2.select(a2, zero_) - qe2_)
-                y2.unsafe_offset(at).unsafe_store(kb2.select(b2, zero_) - qe2_)
+                x.unsafe_offset(at).unsafe_store(_keep[L](ka.select(a, zero_) - qe_, xo, cells))
+                y.unsafe_offset(at).unsafe_store(_keep[L](kb.select(b, zero_) - qe_, yo, cells))
+                x2.unsafe_offset(at).unsafe_store(_keep[L](ka2.select(a2, zero_) - qe2_, x2o, cells))
+                y2.unsafe_offset(at).unsafe_store(_keep[L](kb2.select(b2, zero_) - qe2_, y2o, cells))
                 if with_cigar:
                     d = d | ka.select(V(0x08), zero_)
                     d = d | kb.select(V(0x10), zero_)
@@ -459,16 +505,21 @@ def ksw_extd2[
                 var nb = zero_.gt(b)
                 var na2 = zero_.gt(a2)
                 var nb2 = zero_.gt(b2)
-                x.unsafe_offset(at).unsafe_store(na.select(zero_, a) - qe_)
-                y.unsafe_offset(at).unsafe_store(nb.select(zero_, b) - qe_)
-                x2.unsafe_offset(at).unsafe_store(na2.select(zero_, a2) - qe2_)
-                y2.unsafe_offset(at).unsafe_store(nb2.select(zero_, b2) - qe2_)
+                x.unsafe_offset(at).unsafe_store(_keep[L](na.select(zero_, a) - qe_, xo, cells))
+                y.unsafe_offset(at).unsafe_store(_keep[L](nb.select(zero_, b) - qe_, yo, cells))
+                x2.unsafe_offset(at).unsafe_store(_keep[L](na2.select(zero_, a2) - qe2_, x2o, cells))
+                y2.unsafe_offset(at).unsafe_store(_keep[L](nb2.select(zero_, b2) - qe2_, y2o, cells))
                 d = d | na.select(zero_, V(0x08))
                 d = d | nb.select(zero_, V(0x10))
                 d = d | na2.select(zero_, V(0x20))
                 d = d | nb2.select(zero_, V(0x40))
             if with_cigar:
+                # Codes past `en` land in the row's slack or the next row's, which that row writes before any read.
                 pr.unsafe_offset(at).unsafe_store(d.cast[DType.uint8]())
+            at -= W
+        x[unsafe_offset=st - 1] = kept_x
+        v[unsafe_offset=st - 1] = kept_v
+        x2[unsafe_offset=st - 1] = kept_x2
         if not approx_max:
             # The exact maximum, with the C's 32-bit array and its four-way reduction.
             var max_h: Int
@@ -481,23 +532,59 @@ def ksw_extd2[
                     h[unsafe_offset=en0] = h[unsafe_offset=en0] + Int32(v8[unsafe_offset=en0])
                 max_h = Int(h[unsafe_offset=en0])
                 max_t = en0
-                var hh = SIMD[DType.int32, 4](Int32(max_h))
-                var tt = SIMD[DType.int32, 4](Int32(max_t))
+                # The C reduces four lanes, each the positions `st0 + i (mod 4)`, keeping each lane's first maximum, then
+                # takes the lanes in order, a later one only when strictly greater. The same here sixteen at a time:
+                # each of the sixteen lanes keeps its first maximum, the lanes of one residue mod 4 then give their
+                # class's maximum at its first position.
+                comptime M = 16
+                var lanes = SIMD[DType.int32, M]()
+                comptime for k in range(M):
+                    lanes[k] = Int32(k)
+                var best = SIMD[DType.int32, M](Int32.MIN)
+                var at_best = SIMD[DType.int32, M](0)
                 var tk = st0
+                while tk + M <= en1:
+                    var hv = (
+                        h.unsafe_offset(tk).unsafe_load[width=M]()
+                        + v8.unsafe_offset(tk).unsafe_load[width=M]().cast[DType.int32]()
+                    )
+                    h.unsafe_offset(tk).unsafe_store(hv)
+                    var gt = hv.gt(best)
+                    best = gt.select(hv, best)
+                    at_best = gt.select(lanes + Int32(tk), at_best)
+                    tk += M
+                # Lanes 8 apart, then 4 apart, are of one class: the greater of each pair, at the earlier position on a
+                # tie.
+                var lo8 = best.slice[8, offset=0]()
+                var hi8 = best.slice[8, offset=8]()
+                var lo8_at = at_best.slice[8, offset=0]()
+                var hi8_at = at_best.slice[8, offset=8]()
+                var take8 = hi8.gt(lo8) | (hi8.eq(lo8) & hi8_at.lt(lo8_at))
+                var best8 = take8.select(hi8, lo8)
+                var at8 = take8.select(hi8_at, lo8_at)
+                var lo4 = best8.slice[4, offset=0]()
+                var hi4 = best8.slice[4, offset=4]()
+                var lo4_at = at8.slice[4, offset=0]()
+                var hi4_at = at8.slice[4, offset=4]()
+                var take4 = hi4.gt(lo4) | (hi4.eq(lo4) & hi4_at.lt(lo4_at))
+                var class_best = take4.select(hi4, lo4)
+                var class_at = take4.select(hi4_at, lo4_at)
+                # The rest of the whole fours, after every position above.
+                var lanes4 = lanes.slice[4, offset=0]()
                 while tk < en1:
                     var hv = (
                         h.unsafe_offset(tk).unsafe_load[width=4]()
                         + v8.unsafe_offset(tk).unsafe_load[width=4]().cast[DType.int32]()
                     )
                     h.unsafe_offset(tk).unsafe_store(hv)
-                    var gt = hv.gt(hh)
-                    hh = gt.select(hv, hh)
-                    tt = gt.select(SIMD[DType.int32, 4](Int32(tk)), tt)
+                    var gt = hv.gt(class_best)
+                    class_best = gt.select(hv, class_best)
+                    class_at = gt.select(lanes4 + Int32(tk), class_at)
                     tk += 4
-                for i in range(4):
-                    if max_h < Int(hh[i]):
-                        max_h = Int(hh[i])
-                        max_t = Int(tt[i]) + i
+                comptime for i in range(4):
+                    if max_h < Int(class_best[i]):
+                        max_h = Int(class_best[i])
+                        max_t = Int(class_at[i])
                 while tk < en0:
                     h[unsafe_offset=tk] += Int32(v8[unsafe_offset=tk])
                     if Int(h[unsafe_offset=tk]) > max_h:

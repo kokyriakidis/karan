@@ -20,6 +20,11 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   band, Z-drop, end bonus, exact or approximate maximum, extension-only and reversed-CIGAR modes. Byte for byte with
   the C on 23,000 random cases (600 kept in `tests/data`, `pixi run test-ksw2`); with sixty-four-lane vectors it fills
   1 kbp gaps faster than the C's SSE (0.65 s against 1.34 s for 2,000).
+  `ksw_extd2[L, W]` computes `W` cells an instruction while following the C's `L`-wide vectors (the cells computed past
+  a band's edge, which change results there): `ksw_extd2[16, 64]` is the C byte for byte at AVX-512's width (64-wide
+  vectors alone differed from it on 19 of 9,812 of herro2's calls). On those calls it takes 0.75 s against the C's
+  1.45 s: the exact maximum found 16 at a time (ties as the C's four-lane reduction breaks them), the arrays set up by
+  `memset`, and each anti-diagonal's pieces run last to first so the shifted values come from one load.
 - `karan.ksw2_lanes`: the same global gap filling for a batch of pairs at once, a pair a lane: the cells, codes and
   walk back of `ksw2`, so the same CIGARs wherever the band holds the alignment; twice as fast as `ksw2` on batches
   of like pieces. Each pair may have its own band (`bands`): its cells outside it held at minus infinity, so its

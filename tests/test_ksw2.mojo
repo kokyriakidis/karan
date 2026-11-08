@@ -31,7 +31,7 @@ def _code(c: UInt8) -> UInt8:
     return 4
 
 
-def _line[L: Int](entry: String, mut buf: KswBuffers, mut ez: KswResult) raises -> String:
+def _line[L: Int, W: Int = L](entry: String, mut buf: KswBuffers, mut ez: KswResult) raises -> String:
     """One case through the port, printed as the oracle prints it."""
     var f = entry.split(" ")
     var t = List[UInt8]()
@@ -47,7 +47,7 @@ def _line[L: Int](entry: String, mut buf: KswBuffers, mut ez: KswResult) raises 
     for i in range(5):
         for j in range(5):
             mat.append(Int8(-ambi) if i == 4 or j == 4 else (Int8(a) if i == j else Int8(-b)))
-    ksw_extd2[L](
+    ksw_extd2[L, W](
         Span(q),
         Span(t),
         5,
@@ -94,6 +94,18 @@ def test_sixteen_lanes_match_ksw2() raises:
     var ez = KswResult()
     for i in range(len(cases)):
         assert_equal(_line[16](cases[i], buf, ez), expected[i], String("case ", i, ": ", cases[i]))
+
+
+def test_sixteen_lane_results_at_any_width() raises:
+    """KSW2's sixteen-lane results computed 32 or 64 cells an instruction: the same, banded or not."""
+    var data = _cases()
+    var cases = data[0].copy()
+    var expected = data[1].copy()
+    var buf = KswBuffers()
+    var ez = KswResult()
+    for i in range(len(cases)):
+        assert_equal(_line[16, 32](cases[i], buf, ez), expected[i], String("case ", i, " at 32: ", cases[i]))
+        assert_equal(_line[16, 64](cases[i], buf, ez), expected[i], String("case ", i, " at 64: ", cases[i]))
 
 
 def test_wide_vectors_match_ksw2_unbanded() raises:
