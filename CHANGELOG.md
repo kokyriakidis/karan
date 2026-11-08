@@ -23,11 +23,18 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
 - `karan.ksw2_lanes`: the same global gap filling for a batch of pairs at once, a pair a lane: the cells, codes and
   walk back of `ksw2`, so the same CIGARs wherever the band holds the alignment; twice as fast as `ksw2` on batches
   of like pieces. Each pair may have its own band (`bands`): its cells outside it held at minus infinity, so its
-  CIGAR is the one its band gives alone, whatever pairs share its batch.
+  CIGAR is the one its band gives alone, whatever pairs share its batch. A cell's code is kept as the eight
+  comparisons that make it, each a mask of the batch's lanes, and the walk back decodes only what each step needs; a
+  batch without a wildcard skips its check: 33 cycles a 32-lane step on Skylake-X, from 40.
 - `karan.ksw2_gpu`: `ksw2_lanes` on a GPU (`ksw_lanes_gpu`): a warp a pair along its anti-diagonals, each lane a
   block of the pair's own band in registers, the codes stored a pair of anti-diagonals at a time and walked back on
   the GPU, so only CIGARs come home; every pair's CIGAR is the one `ksw_lanes` gives it alone in its band. About
   18 G cells/s on an RTX 2070, against 10 G for `ksw_lanes` on 10 Skylake-X cores.
+- `karan.ksw2_gpu` for pipelines: the caller's threads pack pairs into `GpuSegment`s, `submit` starts them and
+  `collect` gives their CIGARs, so the GPU aligns while the caller works; a `LanesGpu` runs its pairs in rounds within
+  its `code_budget`, so two (each its own stream) can share a GPU; bands up to 384 diagonals. An fp16 kernel (two cells
+  an instruction, `LanesGpu.half`) gives the same CIGARs but is slower on Turing and Apple GPUs, so it is off by
+  default.
 
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three

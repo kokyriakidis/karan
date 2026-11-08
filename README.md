@@ -276,6 +276,20 @@ The engines hand a pair over by fixed rules, not tuned thresholds: a cheaper met
 a set share of the work the next method would need. The handover changes only the speed; every engine
 returns the same exact cost and the same CIGAR.
 
+### minimap2's KSW2
+
+For callers that must reproduce minimap2's alignments, as [herro2](https://github.com/kokyriakidis/herro2) must for
+HERRO's model, three modules run minimap2's own aligner rather than karan's engines. They are imported by path
+(`from karan.ksw2 import ksw_extd2`) and documented in their docstrings.
+
+| module | what it is |
+| :-- | :-- |
+| `karan.ksw2` | minimap2 2.31's `ksw_extd2_sse` ported line for line: the same cells, choices among equal alignments, band, Z-drop and CIGARs, global or as an extension; byte for byte with the C on 600 kept cases |
+| `karan.ksw2_lanes` | its global alignment for 32 pairs at a time, a pair a 16-bit lane of an AVX-512 register, each in its own band, so a pair's CIGAR never depends on what it is batched with |
+| `karan.ksw2_gpu` | the same on a GPU, a warp a pair along its anti-diagonals: each pair's CIGAR is the one `ksw2_lanes` gives it alone; `submit` and `collect` let the GPU align while the caller works |
+
+`Ties.KSW2` applies the same rule for equal alignments to karan's own engines.
+
 ## Documentation
 
 - [docs/API.md](docs/API.md): reference for everything the Mojo package exports.
@@ -290,6 +304,8 @@ returns the same exact cost and the same CIGAR.
 pixi run test          # the Mojo test suite
 pixi run fuzz          # random pairs, costs, modes, bands and caps, checked against a full matrix
 pixi run test-wfa      # WFA2-lib's regression set, scores and CIGARs
+pixi run test-ksw2     # karan.ksw2 against minimap2's C, the lanes and the GPU against it
+pixi run test-ksw-ties # Ties.KSW2 over karan's costs, against karan.ksw2
 pixi run test-c        # the C and C++ API
 pixi run test-python   # the Python package
 pixi run test-cli      # the command line

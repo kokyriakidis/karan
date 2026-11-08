@@ -21,6 +21,9 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
   plegma build with, so the three link into one program; plegma carries karan as a submodule. Move it on purpose: change
   the pin, `pixi lock`, build and test. The paper's timings were taken with Mojo 1.1.0 and say so.
 - `pixi run test-wfa` holds every mode WFA2-lib also has to its regression set (scores and CIGARs).
+- `pixi run test-ksw2` holds `karan.ksw2` to minimap2's C byte for byte and `ksw2_lanes` and `ksw2_gpu` to it (the GPU
+  test runs on the host's GPU, an Apple M2 included); `pixi run test-ksw-ties` holds `Ties.KSW2` to it. hcm and herro2
+  rely on those CIGARs being minimap2's: run both after any change to the three modules.
 - `pixi run profile duel|rivals|regret|probes|peak|perf|modes|scaling|noise|compare|all` finds where time goes,
   what each engine choice cost and where a rival wins (see `benchmarks/README.md`, Profiling); probes compile
   in only with `-D KARAN_PROBES`, forced policies only with `-D KARAN_FORCE`.
