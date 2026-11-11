@@ -9,6 +9,7 @@ from max.algorithm import parallelize
 from std.atomic import Atomic
 from std.ffi import c_int, c_size_t, external_call
 from std.memory import stack_allocation
+from std.sys import llvm_intrinsic
 from std.sys.info import CompilationTarget, num_logical_cores, size_of
 
 from max.gpu import WARP_SIZE
@@ -79,15 +80,59 @@ def next_share(mut taken: Atomic[Int64], count: Int, workers: Int, mut last: Int
     return (first, min(first + share, count))
 
 
+comptime _X86_FTZ_DAZ = UInt32((1 << 15) | (1 << 6))
+"""MXCSR's flush-to-zero and denormals-are-zero bits."""
+comptime _ARM_FZ = UInt64(1 << 24)
+"""FPCR's flush-to-zero bit."""
+
+
+struct IeeeFloats:
+    """For as long as it lives, this thread's floating point keeps subnormal numbers (IEEE 754), as a
+    program's main thread does: the runtime's worker threads flush them to zero, so a sum or product that
+    passes through one would come out otherwise on a worker than on the caller's thread, and a result would
+    depend on how many threads ran it (panStar's HLA-DRB1 read 152 edits on a worker, 153 on the main
+    thread). The thread's own setting is put back after. `spread` holds one for every item it runs."""
+
+    var _saved: UInt64
+
+    def __init__(out self):
+        self._saved = 0
+        comptime if CompilationTarget.is_x86():
+            var word = UInt32(0)
+            llvm_intrinsic["llvm.x86.sse.stmxcsr", NoneType](Pointer(to=word))
+            self._saved = UInt64(word)
+            var cleared = word & ~_X86_FTZ_DAZ
+            llvm_intrinsic["llvm.x86.sse.ldmxcsr", NoneType](Pointer(to=cleared))
+        elif CompilationTarget.has_neon():
+            var word = llvm_intrinsic["llvm.aarch64.get.fpcr", UInt64]()
+            self._saved = word
+            llvm_intrinsic["llvm.aarch64.set.fpcr", NoneType](word & ~_ARM_FZ)
+
+    def __deinit__(deinit self):
+        comptime if CompilationTarget.is_x86():
+            var word = UInt32(self._saved)
+            llvm_intrinsic["llvm.x86.sse.ldmxcsr", NoneType](Pointer(to=word))
+        elif CompilationTarget.has_neon():
+            llvm_intrinsic["llvm.aarch64.set.fpcr", NoneType](self._saved)
+
+
 def spread[F: def(Int) -> None](work: F, items: Int, workers: Int):
     """Runs `work` on each of `items` items over `workers` threads; on the caller's own thread, starting
     none, for one worker or one item. The library starts threads only when a caller asks for more than
-    one: an application that calls it from threads of its own knows best how to spread its work."""
+    one: an application that calls it from threads of its own knows best how to spread its work. Every
+    item computes with subnormal numbers kept, as the caller's thread does (`IeeeFloats`): the results do
+    not depend on how many threads ran them."""
     if workers <= 1 or items <= 1:
         for item in range(items):
             work(item)
         return
-    parallelize(work, items, workers)
+
+    def kept(item: Int) {imm work}:
+        var floats = IeeeFloats()
+        work(item)
+        _ = floats^
+
+    parallelize(kept, items, workers)
 
 
 def thread_count(asked: Int, items: Int) -> Int:

@@ -4326,6 +4326,30 @@ def test_aligner_takes_codes_and_gives_runs() raises:
             assert_equal(with_runs.runs[index], expected[index])
 
 
+def _through_subnormals(seed: Float64) -> Float64:
+    # Down through the subnormal range and back: zero where subnormals are flushed.
+    var x = seed
+    for _ in range(4):
+        x = x / 1e10
+    return x * 1e300
+
+
+def test_spread_keeps_subnormals_as_the_callers_thread_does() raises:
+    from karan.common import spread
+
+    var here = _through_subnormals(1e-270)
+    assert_true(here > 0.0)
+    var got = List[Float64](length=16, fill=0.0)
+    var at = got.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+
+    def item(i: Int) {imm at}:
+        at[unsafe_offset=i] = _through_subnormals(1e-270)
+
+    spread(item, 16, 8)
+    for i in range(16):
+        assert_equal(got[i], here)
+
+
 def main() raises:
     """Runs every `test_` function here."""
     TestSuite.discover_tests[__functions_in_module()]().run()
