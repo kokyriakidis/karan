@@ -41,6 +41,17 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   an instruction, `LanesGpu.half`) gives the same CIGARs but is slower on Turing and Apple GPUs, so it is off by
   default.
 
+- `LongAligner`: a long query, a contig or a long read, aligned to a reference from the caller's seeds as minimap2
+  2.28 aligns it (`karan.chaining`, `karan.long_align`): `mg_lchain_dp` and `mg_lchain_rmq` chaining and the long join
+  across `bw_long`, chains ranked with minimap2's hash for ties, primaries and secondaries chosen (`mm_set_parent`,
+  `mm_select_sub`, `mm_est_err`), each chain aligned as `mm_align1` aligns it with `karan.ksw2` (bad ends and seeds
+  left out, approximate then exact Z-drop, a Z-drop splitting the chain, an inversion between the pieces), CIGARs
+  fixed (`mm_fix_cigar`), alignments re-ranked and given mapping qualities. Presets `asm5`, `asm10`, `asm20`,
+  `map_hifi`, `map_ont` and `dipcall`. From minimap2's own seeds it gives minimap2's lines byte for byte: on HG002
+  contigs of chr19 tandem arrays, kb-scale copy-number gaps included, the same CIGARs and all 3,591 differences
+  paftools calls; on 2,657 HiFi reads all 4,812 records the same, mapping qualities too (`pixi run test-long`).
+  `mg_lchain_rmq`'s AVL tree is a segment tree and a 64-ary bit tree here, which take the leftmost of two anchors of
+  equal priority; minimap2's `ksw_extz2_sse` (equal gap pieces) is not ported, so such costs run `ksw_extd2`.
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
   kinds, as WFA2-lib's ends-free and extension and abPOA's local: any free ends, with the presets

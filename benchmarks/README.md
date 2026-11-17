@@ -417,6 +417,19 @@ ont-10k reads, interleaved groups 4.5 to 11.5% on the long and divergent pairs, 
 which neither the divergent-pair handover nor the later changes to it touch, and their bands' edges fit under
 the memory cap.
 
+## Long Alignment Parity
+
+`pixi run build-long-paf` builds `build/long_paf PRESET REF.fa QUERIES`, which seeds each query as minimap2 does
+(`tests/mm2_seeds.mojo`), aligns it with `LongAligner` and writes PAF with `cg` and `cs` tags;
+`python3 benchmarks/long_parity.py MINIMAP2.paf KARAN.paf [--ref REF.fa --paftools K8,PAFTOOLS.js]` then counts the
+primaries placed alike, identical CIGARs, shared `cs` differences and, per haplotype, identical `paftools.js call`
+variants. On xaros (i9-7900X, one thread), against minimap2 2.28 with the same options:
+
+| input | minimap2 | karan | identical |
+| :-- | --: | --: | :-- |
+| 4 HG002 contigs, 1.05 Mb, `dipcall` | 24.6 s | 16.5 to 19.0 s | every line, 3,591/3,591 calls |
+| 2,657 HiFi reads, 43 Mb, `map-hifi` | 117 s | 148 s | 4,812/4,812 records |
+
 ## Profiling
 
 `pixi run profile` pinpoints where karan's time goes, where it could go less far, and where a rival

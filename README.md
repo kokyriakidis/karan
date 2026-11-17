@@ -290,6 +290,30 @@ HERRO's model, three modules run minimap2's own aligner rather than karan's engi
 
 `Ties.KSW2` applies the same rule for equal alignments to karan's own engines.
 
+### Long queries, as minimap2 aligns them
+
+`LongAligner.align` aligns a contig or a long read to a reference from seeds the caller found, the way minimap2 2.28
+does after seeding: its chaining (`mg_lchain_dp`, `mg_lchain_rmq` and the long join), its choice of primary and
+secondary chains, its alignment of each chain (bad ends and seeds left out, the gaps filled and the ends extended by
+`karan.ksw2`, a fill that Z-drops splitting the chain, inversions between the pieces), its CIGAR fixes, re-ranking
+and mapping qualities. Presets are minimap2's (`LongPreset.asm5()`, `asm10`, `asm20`, `map_hifi`, `map_ont`, and
+`dipcall()` for `-x asm5 -z200000,10000 -r2k`). Seeded with minimap2's own minimizers it gives minimap2's PAF lines:
+on two haplotypes' contigs of HG002 chr19 tandem arrays (1.05 Mb against 2.75 Mb of CHM13) the same intervals,
+CIGARs and all 3,591 differences, and on 2,657 HiFi reads of the same region all 4,812 records the same, intervals,
+CIGARs, primary or secondary and mapping quality (`pixi run test-long` keeps a window of it; `benchmarks/long_paf.mojo`
+and `benchmarks/long_parity.py` rerun the comparison).
+
+```mojo
+from karan import LongAligner, LongPreset, Seed, encode_nt4, name_hash
+
+var reference = encode_nt4(reference_text.as_bytes())   # A 0, C 1, G 2, T 3, else 4
+var query = encode_nt4(contig_text.as_bytes())
+var seeds: List[Seed] = ...    # Seed(reference_start, query_start, span, reverse, tandem), forward query positions
+var aligner = LongAligner()    # one a thread
+for hit in aligner.align(Span(reference), Span(query), Span(seeds), LongPreset.dipcall(), name_hash("ctg1")):
+    print(hit.reference_start, hit.reference_end, hit.primary, hit.cigar_string())
+```
+
 ## Documentation
 
 - [docs/API.md](docs/API.md): reference for everything the Mojo package exports.

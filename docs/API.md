@@ -99,7 +99,7 @@ The edit distance is ported from A*PA by Ragnar Groot Koerkamp and Pesho Ivanov 
 ### `align`
 
 ```mojo
-def align(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+def align(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
 ```
 
 An optimal alignment of `query` to `reference` as `mode` asks, every move inside `band`, as a CIGAR with `=` and `X`, or with `eqx` false `M` for both (see `Alignment`); raises when no alignment fits the band.
@@ -118,19 +118,19 @@ piece. At unit costs the bit-parallel band keeps its tiles' edges for the traceb
 alignment byte for byte (see `band.retrace`). The sweeps keep a few rows whatever the cap.
 
 ```mojo
-def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
 ```
 
 `align` over the two sequences' bytes where they lie, no `String` made of them (see `distance`): the same alignment, the CIGAR its `ties` picks byte for byte.
 
 ```mojo
-def align(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+def align(reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align`, or None when the cost would pass `max_cost` or no alignment fits `band`, found as `distance` finds that, with no fronts traced. A mode with a match score, which maximizes a score, takes no cap.
 
 ```mojo
-def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+def align(reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align` under a cap, over the two sequences' bytes.
@@ -150,13 +150,13 @@ def alignments(references: List[String], queries: List[String], scoring: Scoring
 `align` for every pair; on the device, every pair both bounds admit goes out in one launch.
 
 ```mojo
-def alignments(references: List[String], queries: List[String], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, threads: Optional[Int] = None, max_memory: Int = Int(83886080)) -> List[Alignment]
+def alignments(references: List[String], queries: List[String], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, threads: Optional[Int] = None, max_memory: Int = Int(83886080)) -> List[Alignment]
 ```
 
 Every pair's `align`, the pairs spread over threads as `distances` spreads them, each thread's kept fronts within `max_memory` bytes.
 
 ```mojo
-def alignments(references: List[String], queries: List[String], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, threads: Optional[Int] = None, max_memory: Int = Int(83886080)) -> List[Optional[Alignment]]
+def alignments(references: List[String], queries: List[String], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, threads: Optional[Int] = None, max_memory: Int = Int(83886080)) -> List[Optional[Alignment]]
 ```
 
 Every pair's `align` under `max_cost`, None for a pair past it or with no alignment inside `band`, the pairs spread over threads as `distances` spreads them.
@@ -258,7 +258,7 @@ def scores(references: List[String], queries: List[String], scoring: Scoring, mo
 ### `search`
 
 ```mojo
-def search(references: List[String], query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, best: Optional[Int] = None, max_cost: Optional[Int] = None, aligned: Bool = False, ties: Ties = Ties.LEFT, threads: Optional[Int] = None) -> List[Hit]
+def search(references: List[String], query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, best: Optional[Int] = None, max_cost: Optional[Int] = None, aligned: Bool = False, ties: Ties = Ties.KSW2, threads: Optional[Int] = None) -> List[Hit]
 ```
 
 The query against every reference, a database search: each reference's `Hit`, its score, the best first, ties by the references' order; with `best` that many alone, with `max_cost` (a mode with no reward) those within it alone, and with `aligned` each kept hit's alignment too.
@@ -267,6 +267,22 @@ A local alignment scores a group of references at once, one to a SIMD lane, as S
 `local_scores_by_lane`); a mode with no reward takes `distances`, under the cap when there is one;
 any other mode each pair's `score`. Every kept hit is then aligned on its own, when asked for, by
 `align`.
+
+### `encode_nt4`
+
+```mojo
+def encode_nt4(text: Span[UInt8]) -> List[UInt8]
+```
+
+Letters as minimap2 codes them (`seq_nt4_table`): A 0, C 1, G 2, T 3 in either case, anything else 4.
+
+### `name_hash`
+
+```mojo
+def name_hash(name: StringSpan) -> UInt32
+```
+
+minimap2's hash of a query's name (khash's `__ac_X31_hash_string`); passed to `LongAligner.align`, it breaks ties among equally scored chains as minimap2 breaks them for a query of that name.
 
 ## Types
 
@@ -327,25 +343,25 @@ def distance(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs 
 #### `align`
 
 ```mojo
-def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
 ```
 
 `align`, through this aligner's memory: the same alignment, the CIGAR its `ties` picks.
 
 ```mojo
-def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Alignment
+def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080), runs: Bool = False) -> Alignment
 ```
 
-`align` over the two sequences' bytes, through this aligner's memory: a caller holding its sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call.
+`align` over the two sequences' bytes, through this aligner's memory: a caller holding its sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call. The bytes may be letters or the bases' 2-bit codes (0 `A`, 1 `C`, 2 `G`, 3 `T`; any other byte a symbol of its own), the same alignment either way. With `runs`, the CIGAR comes as `Alignment.runs`, numbers (`cigar.run_of`), `cigar` left empty: no text written and parsed back.
 
 ```mojo
-def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align` under a cap, through this aligner's memory.
 
 ```mojo
-def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.LEFT, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
+def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
 ```
 
 `align` under a cap over the two sequences' bytes, through this aligner's memory.
@@ -469,6 +485,220 @@ def write_to(self, mut writer: T)
 
 The kind's phrase.
 
+### `LongAligner`
+
+```mojo
+struct LongAligner
+```
+
+One thread's long-query aligner: KSW2's memory, kept from call to call.
+
+```mojo
+from karan import LongAligner, LongPreset, Seed, encode_nt4
+
+var reference = encode_nt4(reference_text.as_bytes())
+var query = encode_nt4(contig_text.as_bytes())
+var seeds: List[Seed] = ...  # the caller's exact matches, e.g. shared (w, k) minimizers
+var aligner = LongAligner()
+for hit in aligner.align(Span(reference), Span(query), Span(seeds), LongPreset.dipcall()):
+    print(hit.reference_start, hit.reference_end, hit.cigar_string())
+```
+
+| field | type | |
+| :-- | :-- | :-- |
+| `buf` | `KswBuffers` |  |
+| `ez` | `KswResult` |  |
+
+#### `__init__`
+
+```mojo
+def LongAligner.__init__(out self)
+```
+
+#### `chains`
+
+```mojo
+def chains(self, reference_length: Int, query_length: Int, seeds: Span[Seed], preset: LongPreset, name_hash: UInt32 = UInt32(0)) -> List[LongChain]
+```
+
+The chains minimap2 would go on to align, best first, without aligning them: the seeds chained and re-chained, primaries and secondaries chosen.
+
+#### `align`
+
+```mojo
+def align(mut self, reference: Span[UInt8], query: Span[UInt8], seeds: Span[Seed], preset: LongPreset, name_hash: UInt32 = UInt32(0), repeat_length: Int = Int(0)) -> List[LongAlignment]
+```
+
+The query's alignments to the reference as minimap2 makes them from these seeds, best first: primaries, then secondaries within `pri_ratio` of theirs. The sequences are minimap2's codes (`encode_nt4`); seeds hold forward-strand query positions. `name_hash` (`name_hash(query_name)`) breaks ties among equal chains as minimap2 breaks them for that name; `repeat_length`, the query letters under seeds left out as too frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does.
+
+### `LongAlignment`
+
+```mojo
+struct LongAlignment
+```
+
+One alignment of the query, as a line of minimap2's PAF holds it: the query's interval on its forward strand and the reference's, the strand, the CIGAR as KSW2 packs it (`length << 4 | op`, `CIGAR_MATCH`, `CIGAR_INSERTION`, `CIGAR_DELETION`, reference forward, the query reverse-complemented when `reverse`), the chain's score (`s1`) and, for a primary, its best secondary's (`s2`), the alignment's score (`AS`) and its best local score (`ms`), the mapping quality, letters aligned equal (`mlen`) and in all (`blen`). `primary` is minimap2's `tp:A:P`, the best of its query stretch; `supplementary` a primary other than the first (SAM's flag 2048); `inversion` an inversion between two pieces of a split chain (`tp:A:I`).
+
+| field | type | |
+| :-- | :-- | :-- |
+| `query_start` | `Int` |  |
+| `query_end` | `Int` |  |
+| `reference_start` | `Int` |  |
+| `reference_end` | `Int` |  |
+| `reverse` | `Bool` |  |
+| `cigar` | `List[UInt32]` |  |
+| `chain_score` | `Int` |  |
+| `secondary_score` | `Int` |  |
+| `score` | `Int` |  |
+| `dp_max` | `Int` |  |
+| `mapq` | `Int` |  |
+| `matches` | `Int` |  |
+| `block_length` | `Int` |  |
+| `primary` | `Bool` |  |
+| `supplementary` | `Bool` |  |
+| `inversion` | `Bool` |  |
+
+#### `cigar_string`
+
+```mojo
+def cigar_string(self) -> String
+```
+
+The CIGAR as text, minimap2's `M`, `I`, `D`.
+
+### `LongChain`
+
+```mojo
+struct LongChain
+```
+
+A chain as minimap2 keeps it before aligning: its anchors' extent on the query (forward strand) and the reference, the strand, its score and anchors, and whether it is a primary.
+
+| field | type | |
+| :-- | :-- | :-- |
+| `query_start` | `Int` |  |
+| `query_end` | `Int` |  |
+| `reference_start` | `Int` |  |
+| `reference_end` | `Int` |  |
+| `reverse` | `Bool` |  |
+| `score` | `Int` |  |
+| `anchors` | `Int` |  |
+| `primary` | `Bool` |  |
+
+### `LongPreset`
+
+```mojo
+struct LongPreset
+```
+
+minimap2's mapping options for a long query, by its own names where a field has one. The named constructors are minimap2's presets; a field may be set after, as minimap2's flags set them (`-r` sets `bw` and `bw_long`, `-z` `zdrop` and `zdrop_inv`).
+
+| field | type | |
+| :-- | :-- | :-- |
+| `k` | `Int` | The seeds' k-mer length: the chaining penalty scales with it and a secondary within `2 k` of its primary's chain score is kept (`mi->k`). |
+| `bw` | `Int` | Chaining and alignment band (`-r`): no chain has a gap difference above it; a gap is filled in a band of `1.5 bw_long + 1`, an end extended in one of `1.5 bw + 1`. |
+| `bw_long` | `Int` | The band chains are joined across (`-r`'s second value). |
+| `max_gap` | `Int` | The farthest two chained anchors lie apart (`-g`). |
+| `max_gap_ref` | `Int` | The same on the reference, when positive (`-G`). |
+| `max_chain_skip` | `Int` |  |
+| `max_chain_iter` | `Int` |  |
+| `rmq` | `Bool` | Chain by range-maximum queries (`--rmq`), as the assembly presets do. |
+| `rmq_inner_dist` | `Int` |  |
+| `rmq_size_cap` | `Int` |  |
+| `rmq_rescue_size` | `Int` |  |
+| `rmq_rescue_ratio` | `Float32` |  |
+| `chain_gap_scale` | `Float32` |  |
+| `chain_skip_scale` | `Float32` |  |
+| `min_cnt` | `Int` | A chain's least anchors (`-n`). |
+| `min_chain_score` | `Int` | A chain's least score (`-m`). |
+| `mask_level` | `Float32` |  |
+| `mask_len` | `Int` |  |
+| `pri_ratio` | `Float32` | A secondary's least score against its primary's (`-p`). |
+| `best_n` | `Int` | Secondaries kept at most (`-N`). |
+| `match_score` | `Int` | `-A`. |
+| `mismatch` | `Int` | `-B`. |
+| `gap_open` | `Int` | `-O`: a gap of `k` letters costs the less of `gap_open + k gap_extend` and `long_gap_open + k long_gap_extend`. |
+| `gap_extend` | `Int` | `-E`. |
+| `long_gap_open` | `Int` |  |
+| `long_gap_extend` | `Int` |  |
+| `ambiguous` | `Int` | A letter other than A, C, G, T against anything (`--score-N`). |
+| `zdrop` | `Int` | `-z`. |
+| `zdrop_inv` | `Int` | `-z`'s second value: the Z-drop that splits at an inversion. |
+| `end_bonus` | `Int` |  |
+| `min_dp_max` | `Int` | An alignment's least score (`-s`). |
+| `min_ksw_len` | `Int` |  |
+| `max_clip_ratio` | `Float32` |  |
+| `max_sw_mat` | `Int` | A fill of more cells than this is not done: it Z-drops. |
+| `rank_min_len` | `Int` |  |
+| `rank_frac` | `Float32` |  |
+| `end_filter` | `Bool` | Leave bad chain ends out (`mm_fix_bad_ends`; minimap2's `--no-end-flt` turns it off). |
+| `long_join` | `Bool` | Re-chain through gaps up to `bw_long` (minimap2's `--no-long-join` turns it off). |
+| `inversions` | `Bool` | Align an inversion between the pieces of a split chain (minimap2's `--no-inv` turns it off). |
+
+#### `map_ont`
+
+```mojo
+def LongPreset.map_ont() -> Self
+```
+
+minimap2's defaults (`-x map-ont`, `-x lr`): k 15, gaps 5 kb, bands 500 and 20 kb.
+
+#### `map_hifi`
+
+```mojo
+def LongPreset.map_hifi() -> Self
+```
+
+`-x map-hifi`: k 19, gaps 10 kb, `-A1 -B4 -O6,26 -E2,1 -s200`.
+
+#### `asm5`
+
+```mojo
+def LongPreset.asm5() -> Self
+```
+
+`-x asm5`: k 19, range-maximum chaining, bands 1 kb and 100 kb, `-A1 -B19 -O39,81 -E3,1 -z200`.
+
+#### `asm10`
+
+```mojo
+def LongPreset.asm10() -> Self
+```
+
+`-x asm10`: `asm5`'s chaining, `-A1 -B9 -O16,41 -E2,1 -z200`.
+
+#### `asm20`
+
+```mojo
+def LongPreset.asm20() -> Self
+```
+
+`-x asm20`: `asm5`'s chaining, `-A1 -B4 -O6,26 -E2,1 -z200` (its window of 10 is the seeds').
+
+#### `dipcall`
+
+```mojo
+def LongPreset.dipcall() -> Self
+```
+
+dipcall's contig alignment, `-x asm5 -z200000,10000 -r2k`: Z-drop only at an inversion, a 2 kb band.
+
+### `Seed`
+
+```mojo
+struct Seed
+```
+
+An exact match the caller found: `span` letters (1 to 255) of the query from `query` on its forward strand, equal to the reference's from `reference` on, or, when `reverse`, to their reverse complement. `tandem` marks a seed whose query minimizer repeats next to itself, as minimap2 marks one (`is_tandem`); the gap filling never ends a piece on it.
+
+| field | type | |
+| :-- | :-- | :-- |
+| `reference` | `Int` |  |
+| `query` | `Int` |  |
+| `span` | `Int` |  |
+| `reverse` | `Bool` |  |
+| `tandem` | `Bool` |  |
+
 ### `AlignedCounts`
 
 ```mojo
@@ -504,6 +734,13 @@ outside an extension, with no reward, it is minus the cost.
 | `reference_end` | `Int` |  |
 | `query_start` | `Int` |  |
 | `query_end` | `Int` |  |
+| `runs` | `List[UInt64]` | With `runs` asked of `Aligner.align`, the CIGAR's runs as numbers (`cigar.run_of`: length above eight bits, letter below) and `cigar` empty; otherwise empty. |
+
+#### `__init__`
+
+```mojo
+def Alignment.__init__(out self, cost: Int, score: Int, var cigar: String, reference_start: Int, reference_end: Int, query_start: Int, query_end: Int, var runs: List[UInt64] = List())
+```
 
 #### `gapped`
 
@@ -842,9 +1079,10 @@ The best-scoring alignment fixed at one end of both sequences, `anchor`, and fre
 
 Exact by default: the best stop of all. With `zdrop`, minimap2's `-z` and KSW2's Z-drop, the
 search gives up once every alignment it is growing scores more than `zdrop`, plus a gap
-extension a diagonal between them, below the best so far, as WFA2-lib's Z-drop gauges it a cost
-at a time, and the best stop it found stands: a heuristic, faster on a seed whose read turns to
-noise, which may miss a better stop past a divergent stretch.
+extension a diagonal between them, below the best so far, as KSW2 gauges it (every alignment
+still growing, those inside a gap too, not one cost's front as WFA2-lib's does), and the best stop
+it found stands: a heuristic, faster on a seed whose read turns to noise, which may miss a better
+stop past a divergent stretch.
 
 With `end_bonus`, KSW2's and minimap2's `--end-bonus`, BWA-MEM's clipping penalty, an extension
 that reaches the query's far end is preferred whenever its score plus the bonus passes the best
@@ -914,8 +1152,9 @@ and under `RIGHT` starts and ends as early (see `scored`).
 | :-- | :-- | :-- |
 | `identifier` | `UInt8` |  |
 
-- `Ties.LEFT` = `Ties(UInt8(0))`: Every edit as early as an equally good alignment allows, gaps shifted left through repeats: the rule run from the start over both sequences reversed, as KSW2 places gaps by default and as variant callers normalize indels.
+- `Ties.LEFT` = `Ties(UInt8(0))`: Every edit as early as an equally good alignment allows, gaps shifted left through repeats: the rule run from the start over both sequences reversed, as variant callers normalize indels. A substitution beside a gap comes before it, where KSW2 puts the gap first (see `KSW2`).
 - `Ties.RIGHT` = `Ties(UInt8(1))`: Every edit as late as it allows, gaps shifted right: WFA2-lib's own CIGARs, byte for byte.
+- `Ties.KSW2` = `Ties(UInt8(2))`: minimap2's KSW2 and plegma's choice: the walk back from the end takes, at every cell, the diagonal (a match or a substitution) when it is as good as anything, then a reference letter alone, a query letter alone, the second gap piece's of each, a later move only when strictly cheaper; a gap runs on while that costs strictly less than opening it there. Gaps come as early as the cost allows and substitutions as late, as minimap2 writes them and as models trained on its alignments read them. The span with free ends is `LEFT`'s; the letters between are aligned by this rule (see `ksw_ties`).
 
 ### `LocalScores`
 

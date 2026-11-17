@@ -28,6 +28,12 @@ test = {cmd = "./build/test_alignment", depends-on = ["build-tests"]}
 # karan.ksw2 against minimap2's ksw_extd2_sse: its outputs on 600 cases, byte for byte (see tests/test_ksw2.mojo).
 build-test-ksw2 = {cmd = "mojo build -I . tests/test_ksw2.mojo -o build/test_ksw2", depends-on = ["prepare"]}
 test-ksw2 = {cmd = "./build/test_ksw2", depends-on = ["build-test-ksw2"]}
+# karan.long_align and karan.chaining against minimap2 2.28's own PAF lines (tests/data/long) and synthetic cases.
+build-test-long = {cmd = "mojo build -I . -I tests tests/test_long.mojo -o build/test_long", depends-on = ["prepare"]}
+test-long = {cmd = "./build/test_long", depends-on = ["build-test-long"]}
+# The long-alignment parity harness: `build/long_paf PRESET REF.fa QUERIES` writes PAF with cg and cs tags from
+# minimap2's own seeds; `python3 benchmarks/long_parity.py MINIMAP2.paf KARAN.paf` compares (see benchmarks/README.md).
+build-long-paf = {cmd = "mojo build -I . -I tests benchmarks/long_paf.mojo -o build/long_paf", depends-on = ["prepare"]}
 build-test-ksw-ties = {cmd = "mojo build -I . tests/test_ksw_ties.mojo -o build/test_ksw_ties", depends-on = ["prepare"]}
 test-ksw-ties = {cmd = "./build/test_ksw_ties", depends-on = ["build-test-ksw-ties"]}
 # Random pairs, costs, modes, bands and caps, each answer held to the full matrix: `pixi run fuzz [cases] [seed]`.
