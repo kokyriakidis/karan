@@ -507,7 +507,11 @@ def score(
                 # band leaving the best stop.
                 try:
                     reaching = score(
-                        reference, query, costs, unrewarded_reaching(mode), band=reaching_band(mode, band, columns, rows)
+                        reference,
+                        query,
+                        costs,
+                        unrewarded_reaching(mode),
+                        band=reaching_band(mode, band, columns, rows),
                     )
                 except:
                     return best
