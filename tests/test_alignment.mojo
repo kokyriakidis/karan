@@ -2738,8 +2738,24 @@ def test_end_bonus_reaches_the_end_when_it_pays() raises:
         assert_equal(
             score(first, second, costs, Mode.extension(1, anchor, end_bonus=stop.score - reaching + 1)), reaching
         )
-        with assert_raises(contains="end bonus"):
-            _ = align(first, second, costs, Mode.extension(1, anchor, end_bonus=5), band=Band.around(2))
+        # Under a band the bonus weighs the best stop and the best alignment through the query inside it. The
+        # best one through the query, 24 matches and 8 inserted letters (score 2), runs 8 diagonals off; inside
+        # two either side it is 24 matches and 8 mismatches (score -8), which takes a bonus over 32 to win.
+        var narrow = Band.around(2)
+        var banded_stop = align(first, second, costs, Mode.extension(1, anchor, end_bonus=32), band=narrow)
+        assert_equal(banded_stop.score, stop.score)
+        assert_equal(banded_stop.cigar, stop.cigar)
+        var banded_whole = align(first, second, costs, Mode.extension(1, anchor, end_bonus=33), band=narrow)
+        assert_equal(banded_whole.score, -8)
+        assert_equal(banded_whole.query_end - banded_whole.query_start, second.byte_length())
+        assert_equal(score(first, second, costs, Mode.extension(1, anchor, end_bonus=33), band=narrow), -8)
+        # A band holding the inserted letters' diagonal finds the unbanded alignment.
+        var holding = Band.around(8)
+        var held = align(
+            first, second, costs, Mode.extension(1, anchor, end_bonus=stop.score - reaching + 1), band=holding
+        )
+        assert_equal(held.score, whole.score)
+        assert_equal(held.cigar, whole.cigar)
         var scoring = Scoring.dna()
         var table_stop = align(first, second, scoring, Mode.extension(0, anchor))
         var table_reaching = score(first, second, scoring, Mode.extension(0, anchor).reaching_end())
@@ -3757,6 +3773,39 @@ def test_zdrop_gives_up_on_noise() raises:
             assert_equal(extension_price(found.cigar, 2, 4, 6, 2, -1, 0), found.score)
     with assert_raises():
         _ = Mode.extension(1, zdrop=-5)
+
+
+def test_zdrop_crosses_a_one_letter_deletion() raises:
+    """A read that matches the reference but for one deleted letter and a substitution every 97 letters, at
+    minimap2's HiFi costs (mismatch 4, gaps 6 + 2k or 26 + k): a Z-drop of 400 extends it to its end as the exact
+    extension does, from either anchor, with or without an end bonus. Before d9e8225 the Z-drop, gauged on the
+    aligned front of one cost alone, gave up 1,473 letters into such a read (chr19:8,736,670, a 10,310-letter tail,
+    score 1,465 against the exact 10,208)."""
+    seed(131)
+    var costs = Costs.two_piece(4, 6, 2, 26, 1)
+    var reference = random_sequence(4500, 4500, DNA_ALPHABET)
+    var letters = reference.as_bytes()
+    var query = String()
+    for index in range(len(letters)):
+        if index == 1500:
+            continue
+        var letter = letters[index]
+        if index % 97 == 50:
+            letter = UInt8(ord("A")) if letter != UInt8(ord("A")) else UInt8(ord("C"))
+        query += chr(Int(letter))
+    for from_end in [False, True]:
+        var anchor = Anchor.END if from_end else Anchor.START
+        var first = reversed_text(reference) if from_end else reference
+        var second = reversed_text(query) if from_end else query
+        var exact = align(first, second, costs, Mode.extension(1, anchor))
+        assert_equal(exact.query_end - exact.query_start, second.byte_length())
+        for bonus in [-1, 5]:
+            var mode = Mode.extension(1, anchor, zdrop=400, end_bonus=bonus) if bonus > 0 else Mode.extension(
+                1, anchor, zdrop=400
+            )
+            var dropped = align(first, second, costs, mode)
+            assert_equal(dropped.score, exact.score)
+            assert_equal(dropped.cigar, exact.cigar)
 
 
 def column_maxima(first: String, second: String, a: Int, x: Int, o: Int, e: Int, o2: Int, e2: Int) -> List[Int]:

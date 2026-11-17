@@ -472,8 +472,6 @@ def score(
         rings_within(penalties, columns, rows, DEFAULT_MAX_MEMORY)
         var drop_extension = costs.cheapest_extension()
         var at_end = mode.anchor == Anchor.END
-        if mode.end_bonus > 0 and not band.covers(columns, rows):
-            raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "an end bonus takes no band")
         var found = extend[2](
             reference,
             query,
@@ -505,8 +503,14 @@ def score(
                 # No front point reached the query's end before the search could stop: none comes close.
                 return best
             else:
-                # An empty side or no reward, where the search does not run: the free ends' own.
-                reaching = score(reference, query, costs, mode.reaching_end(), band=band)
+                # An empty side or no reward, where the search does not run: the free ends' own, none inside the
+                # band leaving the best stop.
+                try:
+                    reaching = score(
+                        reference, query, costs, unrewarded_reaching(mode), band=reaching_band(mode, band, columns, rows)
+                    )
+                except:
+                    return best
             if reaching + mode.end_bonus > best:
                 return reaching
         return best
@@ -1072,6 +1076,21 @@ def best_scoring(
     )
 
 
+def unrewarded_reaching(mode: Mode) raises AlignmentError -> Mode:
+    """`mode.reaching_end()` with no match score, for an extension the search does not run, one side empty or no
+    reward: no letter earns anything there, so the alignment through the query that scores best is the least
+    costly one, its score minus its cost, and the wavefront finds it inside a band, which the sweep a reward takes
+    does not."""
+    var from_end = mode.anchor == Anchor.END
+    return Mode.ends_free(reference_start=Int.MAX if from_end else 0, reference_end=0 if from_end else Int.MAX)
+
+
+def reaching_band(mode: Mode, band: Band, columns: Int, rows: Int) -> Band:
+    """An extension's band as the free-ends alignment through the query counts it: that one's diagonals run from
+    the origin, an extension's from the end back from the corner, so from the end it is mirrored there."""
+    return band.mirrored(columns - rows) if mode.anchor == Anchor.END else band
+
+
 def extended_alignment(
     reference: ImmSpan[UInt8, _],
     query: ImmSpan[UInt8, _],
@@ -1083,8 +1102,6 @@ def extended_alignment(
     limit: Int,
 ) raises AlignmentError -> Alignment:
     """The best extension from `mode`'s anchor (see `Mode.extension`)."""
-    if mode.end_bonus > 0 and not band.covers(len(reference), len(query)):
-        raise AlignmentError(ErrorKind.INVALID_ARGUMENT, "an end bonus takes no band")
     var two = costs.pieces() == 2
     var penalties = rewarded_penalties(mode.match_score, costs)
     rings_within(penalties, len(reference), len(query), kept_bytes(limit))
@@ -1099,7 +1116,17 @@ def extended_alignment(
     # where it does not run: there the free ends' own alignment through the query is weighed against it.
     var searched = len(reference) > 0 and len(query) > 0 and penalties.reward > 0
     if mode.end_bonus > 0 and not found.dropped and not searched:
-        var reaching = aligned_within(reference, query, costs, mode.reaching_end(), band, Int.MAX, ties, eqx, limit)
+        var reaching = aligned_within(
+            reference,
+            query,
+            costs,
+            unrewarded_reaching(mode),
+            reaching_band(mode, band, len(reference), len(query)),
+            Int.MAX,
+            ties,
+            eqx,
+            limit,
+        )
         if aligned(reaching) and reaching.score + mode.end_bonus > found.score:
             return reaching^
     var columns = len(reference)

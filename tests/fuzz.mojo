@@ -224,17 +224,14 @@ def check(trial: Case) raises:
     var model = model_of(trial.costs, trial.mode, trial.band)
     var best = optimum(model, trial.reference, trial.query)
     if trial.mode.kind == Mode.EXTENSION and trial.mode.end_bonus > 0:
-        if not trial.band.covers(trial.reference.byte_length(), trial.query.byte_length()):
-            # An end bonus takes no band.
-            try:
-                _ = align(trial.reference, trial.query, trial.costs, trial.mode, band=trial.band)
-            except:
-                return
-            raise Error("an end bonus under a band was not refused")
         # Without a Z-drop the bonus chooses: the best extension reaching the query's far end when it
         # plus the bonus passes the best stop, and the one it reaches must then be the free ends' best.
         if trial.mode.zdrop < 0:
-            var reaching_model = model_of(trial.costs, trial.mode.reaching_end(), trial.band)
+            # The alignment through the query is a free-ends one, whose band counts diagonals from the origin;
+            # an extension from the end counts them back from the corner.
+            var corner = trial.reference.byte_length() - trial.query.byte_length()
+            var forward = trial.band.mirrored(corner) if trial.mode.anchor == Anchor.END else trial.band
+            var reaching_model = model_of(trial.costs, trial.mode.reaching_end(), forward)
             var reaching = optimum(reaching_model, trial.reference, trial.query)
             if best and reaching and reaching.value() + trial.mode.end_bonus > best.value():
                 model = reaching_model^
