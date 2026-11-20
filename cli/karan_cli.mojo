@@ -104,24 +104,36 @@ def read_records(path: String) raises -> List[Record]:
             var name = record_name(line.removeprefix(">"), path)
             var sequence = String()
             while index < len(lines) and not String(lines[index]).startswith(">"):
-                sequence += String(lines[index].strip())
+                sequence += cleaned(String(lines[index]), path)
                 index += 1
-            records.append(Record(name, sequence.upper()))
+            records.append(Record(name, sequence))
         elif line.startswith("@"):
             var name = record_name(line.removeprefix("@"), path)
             # The sequence line, its `+` line and as many qualities, each a line of its own.
             if index + 2 >= len(lines):
                 raise Error(String(path, ": the FASTQ record `", name, "` is cut short"))
-            var sequence = String(lines[index].strip())
+            var sequence = cleaned(String(lines[index]), path)
             var plus = String(lines[index + 1].strip())
             var qualities = String(lines[index + 2].strip())
             if not plus.startswith("+") or qualities.byte_length() != sequence.byte_length():
                 raise Error(String(path, ": the FASTQ record `", name, "` lacks its `+` line or its qualities"))
             index += 3
-            records.append(Record(name, sequence.upper()))
+            records.append(Record(name, sequence))
         else:
             raise Error(String(path, ": neither FASTA nor FASTQ at `", line, "`"))
     return records^
+
+
+def cleaned(line: String, path: String) raises -> String:
+    """A sequence line from a file, upper-cased: whitespace anywhere in it dropped, ASCII alone, as `literal` takes
+    a sequence on the command line."""
+    var out = String()
+    for word in line.split():
+        out += String(word)
+    for byte in out.as_bytes():
+        if byte >= 0x80:
+            raise Error(String(path, ": ASCII letters alone in a sequence"))
+    return out.upper()
 
 
 def record_name(header: StringSlice, path: String) raises -> String:
@@ -191,6 +203,9 @@ def mode_of(text: String, match_score: Int, zdrop: Int, end_bonus: Int) raises -
     elif kind == "local" and len(values) == 1:
         return Mode.local(values[0])
     elif kind == "overlap" and len(values) == 1:
+        # An overlap is free ends to the library, so the guard on `--match-score` after this would let it pass.
+        if match_score > 0:
+            fail("--match-score: free ends alone; local, overlap and extension take their reward in --mode")
         return Mode.overlap(values[0])
     elif kind == "extension":
         var parts = List[String]()
@@ -334,9 +349,14 @@ def run() raises:
             format = value
             format_given = True
         elif argument == "--threads":
-            threads = Int(value)
+            var count = Int(value)
+            if count < 0:
+                fail("--threads: a count of zero or more")
+            threads = count
         elif argument == "--max-memory":
             memory = Int(value)
+            if memory < 0:
+                fail("--max-memory: zero or more bytes (zero for the default)")
         elif argument == "--cigar-m":
             eqx = False
         elif argument == "--both-strands":
@@ -391,8 +411,8 @@ def run() raises:
                 fail(String(pairs_file.value(), ": a line without name, reference and query"))
             names.append(String(fields[0]))
             reference_names.append(String(fields[0]))
-            references.append(String(fields[1]).upper())
-            queries.append(String(fields[2]).upper())
+            references.append(cleaned(String(fields[1]), pairs_file.value()))
+            queries.append(cleaned(String(fields[2]), pairs_file.value()))
     elif len(positional) == 2:
         var targets = read_records(positional[0])
         var reads = read_records(positional[1])

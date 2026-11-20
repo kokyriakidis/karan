@@ -78,6 +78,8 @@ def main() -> None:
     assert karan.distance("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=11) is None
     assert karan.align("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine, max_cost=12).cigar == "4=3X6="
     assert karan.distance("AAAACCCC", "CCCCAAAA", affine, band=karan.Band.around(0)) == 32
+    # A cap as high as an int64 holds is still a cap: a pair outside the band is None, not an error.
+    assert karan.distance("AAAACCCC", "CCCCAAAA", affine, band=karan.Band(5, 6), max_cost=2**63 - 1) is None
     assert karan.score("ACGTACGTTTGCA", "ACGTCGTTTTGCA", affine) == -12
     two = karan.Costs.two_piece(4, 6, 2, 24, 1)
     gapped = "GATTACAGCTTGCA" + "C" * 30 + "TGGACCATGAGTCA"

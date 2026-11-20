@@ -36,7 +36,8 @@ extern "C" {
 /* The CIGAR's memory could not be allocated, or costs this dear would keep more fronts than the memory
  * allowed (`max_memory`, or 80 MB for a distance or a score). */
 #define KARAN_OUT_OF_MEMORY (-2)
-/* Costs no alignment can be searched by: a mismatch or extension of zero, or a negative cost. */
+/* Costs no alignment can be searched by: a mismatch or extension of zero, a negative cost, costs past the range
+ * the search's arithmetic holds, or a local mode or free ends whose match earns nothing. */
 #define KARAN_INVALID_COSTS (-3)
 /* Every alignment costs more than the `max_cost` asked for, or under a cap none fits the band. */
 #define KARAN_ABOVE_MAX (-4)
@@ -212,8 +213,9 @@ void karan_free(char *cigar);
  * `query_lengths[i]`, all under the same costs, mode and options, spread over `threads` threads, or on
  * the caller's own thread alone for zero: the library starts threads only when asked, its caller being
  * the one that knows how to spread its work. Each thread takes the next pair as soon as it is free. Both
- * return zero, or a KARAN_ code that fails the whole batch (costs or a mode no pair can take), and
- * then write nothing.
+ * return zero, or a KARAN_ code that fails the whole batch (costs it refuses, or a mode it cannot read: an
+ * unknown kind or negative free ends), and then write nothing. A mode a pair cannot serve, as the least
+ * cost of a local alignment, gives each pair its own code instead.
  */
 
 /* Every pair's `karan_distance` into `results[i]`: its least cost, or its own KARAN_ code. */
@@ -315,9 +317,8 @@ struct Mode {
                           int64_t end_bonus = 0) {
         return {{KARAN_EXTENSION, 0, 0, 0, 0, match_score, anchor == Anchor::end ? 1 : 0, zdrop, end_bonus}};
     }
-    /* The best-scoring alignment of any part of each, a match earning `match_score`: Smith-Waterman; under a
-     * table's scores, its own rewards, `local()`. */
-    static Mode local(int64_t match_score = 0) { return {{KARAN_LOCAL, 0, 0, 0, 0, match_score, 0, 0}}; }
+    /* The best-scoring alignment of any part of each, a match earning `match_score`: Smith-Waterman. */
+    static Mode local(int64_t match_score) { return {{KARAN_LOCAL, 0, 0, 0, 0, match_score, 0, 0}}; }
     /* The best-scoring alignment with every end gap free, a match earning `match_score`: an overlap. */
     static Mode overlap(int64_t match_score) {
         // With costs alone every end free lets the empty alignment win.
@@ -567,7 +568,10 @@ inline std::vector<std::optional<int64_t>> distances_within(const std::vector<st
                                                             const Mode &mode = Mode::global(), Band band = {},
                                                             int threads = 0) {
     std::vector<std::optional<int64_t>> results;
-    if (max_cost < 0) return std::vector<std::optional<int64_t>>(references.size());
+    if (max_cost < 0) {
+        detail::Batch(references, queries);  // the sides checked as a capped call checks them
+        return std::vector<std::optional<int64_t>>(references.size());
+    }
     for (int64_t result :
          detail::distances(detail::Batch(references, queries), costs, mode, band, max_cost, threads)) {
         detail::check(result);
@@ -596,7 +600,10 @@ inline std::vector<std::optional<Alignment>> alignments_within(const std::vector
                                                                const Mode &mode = Mode::global(), Band band = {},
                                                                Ties ties = Ties::ksw2, bool eqx = true,
                                                                int threads = 0, int64_t max_memory = 0) {
-    if (max_cost < 0) return std::vector<std::optional<Alignment>>(references.size());
+    if (max_cost < 0) {
+        detail::Batch(references, queries);  // the sides checked as a capped call checks them
+        return std::vector<std::optional<Alignment>>(references.size());
+    }
     return detail::alignments(detail::Batch(references, queries), costs, mode, band, max_cost, ties, eqx,
                               threads, max_memory);
 }

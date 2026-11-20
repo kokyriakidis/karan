@@ -38,7 +38,23 @@ if "$cli" --costs affine:0,6,2 -r A -q A 2>/dev/null; then
 fi
 
 # Options and values the command line would drop without a word, and bytes that are not a sequence's.
-for refused in "--mode local:2 --match-score 5" "--mode global:7" "--costs affine:4,6,2:9" "--mode infix --zdrop 3" \
+# A pair outside the band is reported unaligned, the others still aligned, with or without a cap.
+printf ">ok\nACGTACGTAC\n>shifted\nTTTACGTACGTAC\n" >"$work/band.fa"
+printf ">ref\nACGTACGTAC\n" >"$work/bandref.fa"
+expect "$("$cli" --band 0 "$work/bandref.fa" "$work/band.fa" | tail -2 | cut -f1,4)" \
+    "$(printf 'ok\t0\nshifted\t*')" "a pair outside the band, no cap"
+expect "$("$cli" --distance --band 0 "$work/bandref.fa" "$work/band.fa" | tail -1)" \
+    "$(printf 'shifted\tref\t*')" "a cost outside the band, no cap"
+# Whitespace inside a sequence line is no letter.
+printf ">q\nAC GT\n" >"$work/space.fa"
+expect "$("$cli" --format paf "$work/space.fa" "$work/space.fa" 2>/dev/null | cut -f2 | head -1)" "4" \
+    "whitespace inside a sequence line"
+printf ">q\nAC\303\251GT\n" >"$work/utf.fa"
+if "$cli" "$work/utf.fa" "$work/utf.fa" >/dev/null 2>&1; then
+    expect "accepted" "refused" "a file sequence that is not ASCII"
+fi
+
+for refused in "--mode overlap:2 --match-score 5" "--threads -3" "--max-memory -1" "--mode local:2 --match-score 5" "--mode global:7" "--costs affine:4,6,2:9" "--mode infix --zdrop 3" \
     "--mode infix --match-score -3"; do
     # shellcheck disable=SC2086
     if "$cli" -r ACGTACGTTTGCA -q ACGTCGTTTTGCA $refused >/dev/null 2>&1; then

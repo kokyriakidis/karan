@@ -332,6 +332,25 @@ int main() {
         if (within[index]) CHECK(*within[index] == distances[index]);
         if (capped_aligned[index]) CHECK(capped_aligned[index]->cigar == batch[index].cigar);
     }
+    // A negative cap still checks that the two sides pair up, as any other cap does.
+    {
+        std::vector<std::string_view> two = {"ACGT", "A"};
+        std::vector<std::string_view> one = {"ACGT"};
+        bool raised = false;
+        try {
+            karan::distances_within(two, one, -1);
+        } catch (const std::invalid_argument &) {
+            raised = true;
+        }
+        CHECK(raised);
+        raised = false;
+        try {
+            karan::alignments_within(two, one, -1);
+        } catch (const std::invalid_argument &) {
+            raised = true;
+        }
+        CHECK(raised);
+    }
     // A pair's own failure stays its own: a sentinel byte fails that pair alone.
     std::vector<std::string_view> odd_firsts{"ACGT", "\xfe", "ACGA"}, odd_seconds{"ACGT", "A", "ACGT"};
     std::vector<int64_t> codes(3);
