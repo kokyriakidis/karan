@@ -255,6 +255,9 @@ struct CigarWriter:
     def finish(var self) -> String:
         """The CIGAR string, its last run written."""
         self.flush()
+        # The first byte cut off was never written: zeroed, so the shrink ends on a character boundary.
+        if self.used < self.text.byte_length():
+            self.out[unsafe_offset=self.used] = 0
         self.text.resize(unsafe_uninit_length=self.used)
         # Swapped out, so the writer is left whole to be destroyed and the string is not copied.
         var text = String()
