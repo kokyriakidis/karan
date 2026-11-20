@@ -9,12 +9,12 @@ each (`tests/ksw2_oracle/oracle.c`, built against minimap2's `ksw2_extd2_sse.c` 
 `ksw_extz_t` and the CIGAR. The port must give them byte for byte with KSW2's sixteen-lane vectors, and with
 sixty-four lanes wherever the band holds the whole matrix."""
 
-from std.testing import assert_equal, assert_true, TestSuite
+from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 from std.random import random_ui64, seed
 
 from karan.ksw2 import KSW_EZ_APPROX_MAX, KswBuffers, KswResult, ksw_extd2
-from karan.ksw2_lanes import LaneBuffers, ksw_lanes, touches_band
+from karan.ksw2_lanes import LaneBuffers, ksw_lanes, scores_fit, touches_band
 from std.sys import has_accelerator
 from karan.ksw2_gpu import GPU_MAX_BAND, LanesGpu, ksw_lanes_gpu
 
@@ -72,16 +72,31 @@ def _line[L: Int, W: Int = L](entry: String, mut buf: KswBuffers, mut ez: KswRes
     return out
 
 
-def _cases() raises -> Tuple[List[String], List[String]]:
+def _cases(name: String = "ksw2") raises -> Tuple[List[String], List[String]]:
     var cases = List[String]()
-    for line in open("tests/data/ksw2_cases.txt", "r").read().splitlines():
+    for line in open(String("tests/data/", name, "_cases.txt"), "r").read().splitlines():
         if line.byte_length() > 0:
             cases.append(String(line))
     var expected = List[String]()
-    for line in open("tests/data/ksw2_expected.txt", "r").read().splitlines():
+    for line in open(String("tests/data/", name, "_expected.txt"), "r").read().splitlines():
         if line.byte_length() > 0:
             expected.append(String(line))
     return (cases^, expected^)
+
+
+def test_swapped_gap_pieces_match_ksw2() raises:
+    """Gap pieces given with the cheaper second (`q2 + e2 < q + e`), which KSW2 swaps after it has set `qe` from
+    the pieces as given: 120 such cases (`tests/data/ksw2_swapped_*`, from `gen.py 400 23` with the pieces swapped,
+    run through the C oracle), byte for byte at every width."""
+    var data = _cases("ksw2_swapped")
+    var cases = data[0].copy()
+    var expected = data[1].copy()
+    assert_equal(len(cases), len(expected))
+    var buf = KswBuffers()
+    var ez = KswResult()
+    for i in range(len(cases)):
+        assert_equal(_line[16](cases[i], buf, ez), expected[i], String("case ", i, ": ", cases[i]))
+        assert_equal(_line[16, 64](cases[i], buf, ez), expected[i], String("case ", i, " at 64: ", cases[i]))
 
 
 def test_sixteen_lanes_match_ksw2() raises:
@@ -348,6 +363,56 @@ def test_lanes_match_ksw2() raises:
         _ = len(ts)
         _ = len(qs)
     assert_true(clear > 400)
+
+
+def _codes(text: String) -> List[UInt8]:
+    """Letters as KSW2's codes, `N` the wildcard 4."""
+    var out = List[UInt8]()
+    for c in text.as_bytes():
+        var code = UInt8(4)
+        if c == UInt8(ord("A")):
+            code = 0
+        elif c == UInt8(ord("C")):
+            code = 1
+        elif c == UInt8(ord("G")):
+            code = 2
+        elif c == UInt8(ord("T")):
+            code = 3
+        out.append(code)
+    return out^
+
+
+def test_lanes_wildcard_scored_zero() raises:
+    """A wildcard scored zero scores `-e2` in KSW2, and so in the lanes: the pair that once aligned as `34M`."""
+    var t = _codes("GCCCCCCCTTTAGGNAAAAAAAAAAAAAAAAAAA")
+    var q = _codes("GCCCCCCCTTTGAGGNAAAAAAAAAAAAAAAAAA")
+    var mat = List[Int8]()
+    for i in range(5):
+        for j in range(5):
+            mat.append(Int8(0) if i == 4 or j == 4 else (Int8(2) if i == j else Int8(-4)))
+    var single = KswBuffers()
+    var ez = KswResult()
+    ksw_extd2[64](Span(q), Span(t), 5, Span(mat), 4, 2, 24, 1, -1, -1, -1, KSW_EZ_APPROX_MAX, single, ez)
+    var tp: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [
+        t.unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]()
+    ]
+    var qp: List[ImmPointer[UInt8, ImmUntrackedOrigin]] = [
+        q.unsafe_ptr().as_imm().unsafe_origin_cast[ImmUntrackedOrigin]()
+    ]
+    var tn: List[Int] = [len(t)]
+    var qn: List[Int] = [len(q)]
+    var lanes = LaneBuffers[32]()
+    var cigars = List[List[UInt32]]()
+    ksw_lanes[32](tp, tn, qp, qn, 2, 4, 0, 4, 2, 24, 1, len(t) + 1, lanes, cigars)
+    assert_true(cigars[0] == ez.cigar)
+    _ = len(t)
+    _ = len(q)
+
+
+def test_scores_fit() raises:
+    """Sixteen bits hold a 6 kbp pair at minimap2's map-hifi scores in a narrow band, not at asm5's."""
+    assert_true(scores_fit(6000, 6000, 32, 1, 4, 1, 6, 2, 26, 1))
+    assert_false(scores_fit(5900, 5900, 8, 1, 19, 1, 39, 3, 81, 1))
 
 
 def main() raises:

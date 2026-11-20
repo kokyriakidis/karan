@@ -28,6 +28,8 @@ whose edge moves otherwise than KSW2's reads cells it never computed, and the sc
 from std.memory import unsafe_memcpy, unsafe_memset
 
 comptime KSW_NEG_INF = -0x40000000
+# `KSW_EZ_GENERIC_SC` (0x04), a full substitution table with transitions, is not ported: minimap2 sets it only for a
+# transition score, which karan's callers never ask for, so a match and a mismatch score alone are read.
 comptime KSW_EZ_SCORE_ONLY = 0x01
 comptime KSW_EZ_RIGHT = 0x02
 comptime KSW_EZ_APPROX_MAX = 0x08
@@ -252,7 +254,7 @@ def ksw_extd2[
         var te = e
         e = e2
         e2 = te
-    var qe = q + e
+    var qe = q_in + e_in  # the C sets qe before it swaps the pieces, and H[0] subtracts that one
     var with_cigar = (flag & KSW_EZ_SCORE_ONLY) == 0
     var approx_max = (flag & KSW_EZ_APPROX_MAX) != 0
     var right = (flag & KSW_EZ_RIGHT) != 0

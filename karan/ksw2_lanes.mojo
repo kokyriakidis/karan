@@ -25,7 +25,8 @@ each pair its own (`bands`, none wider than `w`): a pair's cells outside its own
 as KSW2 run in that band alone holds them, so its alignment is the one its band gives whatever pairs share the
 batch. Cells outside the band are lost, as KSW2's are when its band is the whole matrix: the two agree whenever the
 alignment stays inside, which the caller checks (`touches_band`). Scores must stay within sixteen bits: pairs of up to
-`MAX_LANE_LENGTH` letters.
+`MAX_LANE_LENGTH` letters whose scores in their band `scores_fit`; past it, cells below `NEG` are lost and the walk
+back leaves the band.
 """
 
 from std.memory import pack_bits
@@ -33,6 +34,20 @@ from std.memory import pack_bits
 comptime MAX_LANE_LENGTH = 6000
 """The longest side a pair may have: its scores, a match or a gap letter at a time, stay inside sixteen bits."""
 comptime NEG = Int16(-30000)
+
+
+def scores_fit(
+    target_length: Int, query_length: Int, band: Int, a: Int, b: Int, ambi: Int, q: Int, e: Int, q2: Int, e2: Int
+) -> Bool:
+    """Whether every cell of a pair in its band keeps its scores inside sixteen bits, above `NEG` with room for a gap
+    opened below it: no cell in the band scores less than the path along the main diagonal, every letter a
+    mismatch, then one gap of at most `band` letters, nor more than every letter a match. Large mismatch costs on long
+    pairs (minimap2's asm5, `b` 19) pass it where `MAX_LANE_LENGTH` alone holds; such a pair belongs to `karan.ksw2`."""
+    var diagonal = min(target_length, query_length)
+    var substitution = max(b, ambi if ambi != 0 else max(e, e2))
+    var gap = min(q + band * e, q2 + band * e2)
+    var opening = max(q + e, q2 + e2)
+    return diagonal * a < Int(Int16.MAX) and diagonal * substitution + gap + opening < -Int(NEG)
 
 
 struct LaneBuffers[N: Int](Movable):
@@ -117,6 +132,22 @@ def ksw_lanes[
     comptime V = SIMD[DType.int16, N]
     comptime B = SIMD[DType.uint8, N]
     var lanes = len(targets)
+    for lane in range(lanes):
+        debug_assert(
+            scores_fit(
+                target_lengths[lane],
+                query_lengths[lane],
+                bands[lane] if len(bands) > 0 else w,
+                a,
+                b,
+                ambi,
+                q_in,
+                e_in,
+                q2_in,
+                e2_in,
+            ),
+            "ksw_lanes: a pair's scores pass sixteen bits in its band (see scores_fit)",
+        )
     var q = q_in
     var e = e_in
     var q2 = q2_in
@@ -169,7 +200,7 @@ def ksw_lanes[
     var q2v = V(Int16(q2))
     var match_ = V(Int16(a))
     var mismatch = V(Int16(-b))
-    var wild = V(Int16(-ambi))
+    var wild = V(Int16(-ambi if ambi != 0 else -e2))  # KSW2's: a wildcard scored zero scores -e2
     # Row 0: insertions alone, the cheaper gap piece's.
     for j in range(m + 2):
         buf.h[j] = neg

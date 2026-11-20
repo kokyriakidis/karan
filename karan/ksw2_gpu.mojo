@@ -12,7 +12,7 @@ left (the previous one), both on the previous anti-diagonal; the cells of one an
 step updates every other diagonal, a lane reading its neighbours' edge diagonals by warp shuffle. Each cell's code
 byte (which source gave `H`, and which gaps go on) goes to device memory, indexed by anti-diagonal; one lane then
 walks back, and only the CIGARs come home. Scores are 32-bit, clamped at `NEG` as `ksw2_lanes` clamps its 16-bit
-ones, so pairs of up to `MAX_LANE_LENGTH` letters align identically.
+ones, so pairs of up to `MAX_LANE_LENGTH` letters whose scores in their band `scores_fit` align identically.
 """
 
 from std.atomic import Atomic
@@ -24,7 +24,7 @@ from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.primitives import warp
 from max.gpu.sync import syncwarp
 
-from .ksw2_lanes import MAX_LANE_LENGTH, NEG
+from .ksw2_lanes import MAX_LANE_LENGTH, NEG, scores_fit
 
 comptime GPU_MAX_BAND = 384
 """The most diagonals (`2 w`) a pair's band may span on the GPU; wider bands stay on the CPU. Wide bands take many
@@ -724,7 +724,16 @@ def submit(
     e2_in: Int,
 ) raises:
     """Starts the pairs of `segments` on the GPU, in order, and returns: `collect` gives their CIGARs. Call it with
-    nothing submitted (after a `collect`): the GPU is then idle, so the uploads, from pageable memory, do not wait."""
+    nothing submitted (after a `collect`): the GPU is then idle, so the uploads, from pageable memory, do not wait.
+    Raises on a pair whose scores do not fit sixteen bits in its band (`scores_fit`), which would align off it."""
+    for index in range(len(segments)):
+        ref shapes = segments[index].shapes
+        for pair in range(len(shapes) // 5):
+            var n = Int(shapes[5 * pair + 1])
+            var m = Int(shapes[5 * pair + 3])
+            var band = Int(shapes[5 * pair + 4])
+            if not scores_fit(n, m, band, a, b, ambi, q_in, e_in, q2_in, e2_in):
+                raise Error(t"submit: a pair of {n} x {m} in band {band} passes sixteen bits at these scores")
     var q = q_in
     var e = e_in
     var q2 = q2_in
@@ -736,7 +745,7 @@ def submit(
         var te = e
         e = e2
         e2 = te
-    gpu.scores = [a, b, ambi, q, e, q2, e2]
+    gpu.scores = [a, b, ambi if ambi != 0 else e2, q, e, q2, e2]  # KSW2's: a wildcard scored zero scores -e2
     var count = 0
     var t_total = 0
     var q_total = 0
