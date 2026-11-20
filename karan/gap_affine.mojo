@@ -2928,7 +2928,9 @@ def global_path[
     var columns = len(first)
     var rows = len(second)
     var sweepable = (
-        band.covers(columns, rows)
+        columns > 0
+        and rows > 0
+        and band.covers(columns, rows)
         and difference_bits[pieces](penalties) > 0
         and path_bytes(columns, rows) <= limit * KEPT_BYTES
         and not FORCE_NO_SWEEP

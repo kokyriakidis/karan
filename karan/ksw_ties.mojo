@@ -27,6 +27,8 @@ wavefront search visits.
 """
 
 
+from std.math import gcd
+
 from .modes import Costs
 
 comptime INF = Int32(1 << 29)
@@ -669,6 +671,20 @@ def _spelled(guide: Span[UInt64, _], reference: Span[UInt8, _], query: Span[UInt
     return out^
 
 
+def _spans(guide: Span[UInt64, _], n: Int, m: Int) -> Bool:
+    """Whether `guide` runs over exactly `n` reference letters and `m` query letters."""
+    var i = 0
+    var j = 0
+    for run in guide:
+        var letter = UInt8(run & 0xFF)
+        var k = Int(run >> 8)
+        if letter != _INSERTION:
+            i += k
+        if letter != _DELETION:
+            j += k
+    return i == n and j == m
+
+
 def _guide_cost(guide: Span[UInt64, _], reference: Span[UInt8, _], query: Span[UInt8, _], costs: Costs) -> Int32:
     """What the path `guide` costs, as `ksw_cigar` counts costs; past what it can count, or a path that does not
     span both, no bound at all."""
@@ -710,6 +726,31 @@ def _guide_cost(guide: Span[UInt64, _], reference: Span[UInt8, _], query: Span[U
     return Int32(total)
 
 
+def _reduced(costs: Costs) -> Costs:
+    """`costs` divided by their common factor, which picks the same alignments by the same rule; a second piece's
+    absent `-1` kept."""
+    var two = costs.pieces() == 2
+    var factor = gcd(gcd(costs.mismatch, costs.opening), gcd(costs.extension, costs.deletion_opening))
+    factor = gcd(factor, costs.deletion_extension)
+    if two:
+        factor = gcd(gcd(factor, costs.opening2), costs.extension2)
+        factor = gcd(gcd(factor, costs.deletion_opening2), costs.deletion_extension2)
+    if factor <= 1:
+        return costs
+    var out = Costs(
+        costs.mismatch // factor,
+        costs.opening // factor,
+        costs.extension // factor,
+        costs.opening2 // factor if two else costs.opening2,
+        costs.extension2 // factor if two else costs.extension2,
+    )
+    out.deletion_opening = costs.deletion_opening // factor
+    out.deletion_extension = costs.deletion_extension // factor
+    out.deletion_opening2 = costs.deletion_opening2 // factor if two else costs.deletion_opening2
+    out.deletion_extension2 = costs.deletion_extension2 // factor if two else costs.deletion_extension2
+    return out
+
+
 def ksw_cigar(
     reference: Span[UInt8, _],
     query: Span[UInt8, _],
@@ -731,14 +772,22 @@ def ksw_cigar(
     var runs = List[UInt64]()
     var n = len(reference)
     var m = len(query)
+    # The cells count costs in 32 bits below `INF`, a gap's whole run on top of a cell's: costs reduced to their
+    # common factor first (the same alignments by the same rule), and a pair whose gap could still wrap, or whose
+    # guide already costs past `INF`, keeps its guide, the same cost by WFA's rule.
+    var reduced = _reduced(costs)
+    if reduced.dearest_step() * (max(n, m) + 1) >= Int(Int32.MAX) // 2 or (
+        _guide_cost(guide, reference, query, reduced) >= INF - 1 and _spans(guide, n, m)
+    ):
+        return _spelled(guide, reference, query)
     if by_rows:
-        if _rows_band(n, m, low, high, buf) and _fill_and_walk_rows(reference, query, costs, buf, runs):
+        if _rows_band(n, m, low, high, buf) and _fill_and_walk_rows(reference, query, reduced, buf, runs):
             return runs^
         return _spelled(guide, reference, query)
-    var bound = _guide_cost(guide, reference, query, costs)
-    if _fill_and_walk(reference, query, costs, bound, low, high, max_bytes, buf, runs):
+    var bound = _guide_cost(guide, reference, query, reduced)
+    if _fill_and_walk(reference, query, reduced, bound, low, high, max_bytes, buf, runs):
         return runs^
     # A guide cheaper than any alignment inside the diagonals, which no true path is: every cell they hold.
-    if bound < INF - 1 and _fill_and_walk(reference, query, costs, INF - 1, low, high, max_bytes, buf, runs):
+    if bound < INF - 1 and _fill_and_walk(reference, query, reduced, INF - 1, low, high, max_bytes, buf, runs):
         return runs^
     return _spelled(guide, reference, query)

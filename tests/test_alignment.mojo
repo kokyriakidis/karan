@@ -4458,6 +4458,19 @@ def test_alignment_helpers_read_runs() raises:
     assert_equal(runs.clipped_cigar(query.byte_length()), text.clipped_cigar(query.byte_length()))
 
 
+def test_dear_costs_keep_the_cigar() raises:
+    """Costs multiplied through by ten million pick the same alignment by the same rule: the KSW2 rewrite counts
+    them reduced, not past 32 bits, where its CIGAR once priced to 4.08e9 for a cost of 9e8."""
+    var reference = (
+        "AAGAGGTCGTATGTACTTACCGGTTCCTGGCGTTTACGGTCCGCGTTTGCGTCAACGATACGGCGGTCTCCGAGGCGGCGCTTCGTCCGCGTGAGGTCCAAATTTCTT"
+    )
+    var query = "AAGAGTATCGTATGTACTTACGAGTTCCTGGCGTTTACCTCCGCGTTGTCAACGATACGGGTCGGTCGAGCGGCGCTTCGTCCGCGGGAGGTCCAATTTAT"
+    var small = align(reference, query, Costs.affine(4, 6, 2), Mode.INFIX)
+    var dear = align(reference, query, Costs.affine(40_000_000, 60_000_000, 20_000_000), Mode.INFIX)
+    assert_equal(dear.cost, small.cost * 10_000_000)
+    assert_equal(dear.cigar, small.cigar)
+
+
 def main() raises:
     """Runs every `test_` function here."""
     TestSuite.discover_tests[__functions_in_module()]().run()
