@@ -529,6 +529,16 @@ struct Alignment(Copyable, Movable, Writable):
         self.query_end = query_end
         self.runs = runs^
 
+    def cigar_text(self) -> String:
+        """The CIGAR as text: `cigar`, or spelled from `runs` when the alignment came as runs alone. The helpers
+        below read it, so they serve either form."""
+        if self.cigar.byte_length() > 0 or len(self.runs) == 0:
+            return self.cigar
+        var text = String()
+        for run in self.runs:
+            text.write(Int(run >> 8), chr(Int(run & 0xFF)))
+        return text^
+
     def gapped(self, reference: String, query: String) -> Tuple[String, String]:
         """The aligned parts of both sequences as two rows of one length, `-` against each gapped letter."""
         var top = List[UInt8]()
@@ -538,7 +548,7 @@ struct Alignment(Copyable, Movable, Writable):
         var column = self.reference_start
         var row = self.query_start
         comptime GAP = UInt8(ord("-"))
-        var runs = cigar_runs(self.cigar)
+        var runs = cigar_runs(self.cigar_text())
         for index in range(len(runs[0])):
             var letter = runs[0][index]
             for _ in range(runs[1][index]):
@@ -566,7 +576,7 @@ struct Alignment(Copyable, Movable, Writable):
         var out = String()
         if self.query_start > 0:
             out += String(self.query_start, clip)
-        out += self.cigar
+        out += self.cigar_text()
         if query_length > self.query_end:
             out += String(query_length - self.query_end, clip)
         return out
@@ -577,7 +587,7 @@ struct Alignment(Copyable, Movable, Writable):
         return Alignment(
             self.cost,
             self.score,
-            reversed_cigar(self.cigar),
+            reversed_cigar(self.cigar_text()),
             reference_length - self.reference_end,
             reference_length - self.reference_start,
             query_length - self.query_end,
@@ -587,7 +597,9 @@ struct Alignment(Copyable, Movable, Writable):
     def counts(self, reference: String, query: String) -> AlignedCounts:
         """How many letters the alignment pairs equal and unequal, and leaves gapped either way, `M` runs
         compared letter by letter."""
-        return cigar_counts(reference.as_bytes(), query.as_bytes(), self.cigar, self.reference_start, self.query_start)
+        return cigar_counts(
+            reference.as_bytes(), query.as_bytes(), self.cigar_text(), self.reference_start, self.query_start
+        )
 
     def edit_distance(self, reference: String, query: String) -> Int:
         """The alignment's edits, SAM's `NM` tag: its substitutions and gapped letters."""
@@ -613,7 +625,7 @@ struct Alignment(Copyable, Movable, Writable):
         var row = self.query_start
         var out = String()
         var matched = 0
-        var runs = cigar_runs(self.cigar)
+        var runs = cigar_runs(self.cigar_text())
         for index in range(len(runs[0])):
             var letter = runs[0][index]
             var length = runs[1][index]

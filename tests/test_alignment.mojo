@@ -4399,6 +4399,65 @@ def test_spread_keeps_subnormals_as_the_callers_thread_does() raises:
         assert_equal(got[i], here)
 
 
+def test_codes_never_match_letters() raises:
+    """A base's 2-bit code matches only itself, as the wavefront compares bytes: letters against codes are all
+    mismatches whichever engine runs, and codes against codes align as the letters would."""
+    var letters = "ACGTACGTAC"
+    var code_bytes: List[UInt8] = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1]
+    var codes = String(unsafe_from_utf8=code_bytes)
+    assert_equal(distance(letters, codes), 10)
+    assert_equal(distance(letters, codes, max_cost=100).value(), 10)
+    assert_equal(align(letters, codes).cigar, "10X")
+    var zero: List[UInt8] = [0]
+    assert_equal(distance("A", String(unsafe_from_utf8=zero)), 1)
+    var mutated_bytes: List[UInt8] = [0, 1, 2, 2, 0, 1, 2, 3, 0, 1]
+    var mutated = String(unsafe_from_utf8=mutated_bytes)
+    assert_equal(distance(codes, mutated), distance("ACGTACGTAC", "ACGGACGTAC"))
+
+
+def test_sentinel_bytes_refused() raises:
+    """0xFE and 0xFF, the wavefront's end markers, raise rather than match a sequence's end."""
+    var aligner = Aligner()
+    var with_ff: List[UInt8] = [65, 0xFF]
+    var plain: List[UInt8] = [65]
+    with assert_raises(contains="0xFE or 0xFF"):
+        _ = aligner.align(Span(with_ff), Span(plain), Costs.affine(4, 6, 2))
+    with assert_raises(contains="0xFE or 0xFF"):
+        _ = aligner.distance(
+            Span(plain), Span(with_ff), Costs.affine(4, 6, 2), Mode.ends_free(query_start=100, query_end=100)
+        )
+
+
+def test_capped_batch_at_int_max_gives_none() raises:
+    """A capped batch answers None for a pair outside the band whatever the cap, `Int.MAX` included, as a single
+    capped call does; only the uncapped batch raises."""
+    var references: List[String] = ["ACGTACGT", "ACGT"]
+    var queries: List[String] = ["ACGTACGTAC", "ACGT"]
+    var band = Band.around(1)
+    for costs in [Costs.edit(), Costs.affine(4, 6, 2)]:
+        var found = distances(references, queries, costs, max_cost=Int.MAX, band=band)
+        assert_false(Bool(found[0]))
+        assert_equal(found[1].value(), 0)
+        var aligned = alignments(references, queries, costs, max_cost=Int.MAX, band=band)
+        assert_false(Bool(aligned[0]))
+        with assert_raises():
+            _ = distances(references, queries, costs, band=band)
+
+
+def test_alignment_helpers_read_runs() raises:
+    """The SAM helpers serve an alignment that came as runs alone as they serve its text."""
+    var aligner = Aligner()
+    var costs = Costs.affine(4, 6, 2)
+    var reference = "ACGTTACGA"
+    var query = "ACTTACCGAG"
+    var text = aligner.align(reference.as_bytes(), query.as_bytes(), costs)
+    var runs = aligner.align(reference.as_bytes(), query.as_bytes(), costs, runs=True)
+    assert_equal(runs.cigar_text(), text.cigar)
+    assert_equal(runs.edit_distance(reference, query), text.edit_distance(reference, query))
+    assert_equal(runs.mismatch_string(reference, query), text.mismatch_string(reference, query))
+    assert_equal(runs.clipped_cigar(query.byte_length()), text.clipped_cigar(query.byte_length()))
+
+
 def main() raises:
     """Runs every `test_` function here."""
     TestSuite.discover_tests[__functions_in_module()]().run()

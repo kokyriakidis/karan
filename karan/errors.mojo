@@ -1,7 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Errors: every call that can fail raises an `AlignmentError`, its `kind` saying which way it failed and
-its `detail` what it failed on.
+"""Errors: every call under `Costs` that can fail raises an `AlignmentError`, its `kind` saying which way it
+failed and its `detail` what it failed on. The calls that may run on a GPU (the uncapped `distances`, which
+takes a `placement`) and those under a `Scoring` raise a plain `Error`, since the device's own failures are not
+of these kinds; its message is the `AlignmentError`'s text when one caused it.
 
 One type for the whole package, since a Mojo function declares a single error type and a caller would
 otherwise convert between them at every call.

@@ -747,14 +747,28 @@ def not_bases[width: Int](bytes: SIMD[DType.uint8, width]) -> SIMD[DType.bool, w
     )
 
 
+comptime HOLDS_LETTERS = UInt8(1)
+"""`encoded_bases`' report: the sequence holds `A`, `C`, `G` or `T`."""
+comptime HOLDS_CODES = UInt8(2)
+"""`encoded_bases`' report: the sequence holds a base's 2-bit code, a byte under four."""
+comptime HOLDS_OTHERS = UInt8(4)
+"""`encoded_bases`' report: the sequence holds a byte of neither kind, which `symbol_codes` must recode."""
+
+
+def bases_alone(holds: UInt8) -> Bool:
+    """Whether two sequences that between them hold `holds` are coded right as they stand: bases as letters alone or
+    as codes alone. Letters in one and codes in the other are not, though each is coded right on its own: the
+    wavefront compares bytes, where a code matches only itself, so here it must too (see `symbol_codes`)."""
+    return holds == 0 or holds == HOLDS_LETTERS or holds == HOLDS_CODES
+
+
 @always_inline
 def encoded_chunk[
     width: Int
-](source: ImmPointer[UInt8, _], count: Int, target: MutPointer[UInt8, _], at: Int, reverse: Bool) -> SIMD[
-    DType.bool, width
-]:
+](source: ImmPointer[UInt8, _], count: Int, target: MutPointer[UInt8, _], at: Int, reverse: Bool) -> UInt8:
     """Writes the codes of `width` bytes to `target` from `at` on, those from `at` on in `source`, or with
-    `reverse` those `at` from its end back to front, and gives which of them are not bases."""
+    `reverse` those `at` from its end back to front, and gives what they hold (`HOLDS_LETTERS`, `HOLDS_CODES`,
+    `HOLDS_OTHERS`)."""
     var bytes: SIMD[DType.uint8, width]
     if reverse:
         bytes = source.unsafe_offset(count - at - width).unsafe_load[width=width]()
@@ -763,17 +777,23 @@ def encoded_chunk[
     else:
         bytes = source.unsafe_offset(at).unsafe_load[width=width]()
     # A byte under four is a base's 2-bit code already (a caller holding its reads packed hands them over as
-    # codes, no letters made of them): kept as it is. Letters are never that low, so the two cannot mix up.
+    # codes, no letters made of them): kept as it is. A pair that holds both letters and codes is recoded.
     var coded = bytes.lt(4)
     target.unsafe_offset(at).unsafe_store(coded.select(bytes, base_codes[width](bytes)))
-    return not_bases[width](bytes) & ~coded
+    var others = not_bases[width](bytes)
+    var holds = HOLDS_CODES if coded.reduce_or() else UInt8(0)
+    if (~others).reduce_or():
+        holds |= HOLDS_LETTERS
+    if (others & ~coded).reduce_or():
+        holds |= HOLDS_OTHERS
+    return holds
 
 
 def encoded_bases(
     source: ImmPointer[UInt8, _], count: Int, target: MutPointer[UInt8, _], reverse: Bool = False
-) -> Bool:
+) -> UInt8:
     """Writes each of `count` bytes' base code to `target`, thirty-two at a time, with `reverse` back to
-    front, and whether every byte was `A`, `C`, `G` or `T` (or a base's 2-bit code, 0 to 3, taken as it is):
+    front, and what the bytes hold (`HOLDS_LETTERS`, `HOLDS_CODES`, `HOLDS_OTHERS`; see `bases_alone`):
     a letter of these gives its code from its ASCII
     bits, bit 2 set for `G` and `T`, the code's high bit, and bit 1 differing from bit 2 for `C` and `T`,
     its low bit. Any other byte's code is wrong until recoded (see `symbol_codes`). One pass for both,
@@ -785,31 +805,34 @@ def encoded_bases(
     to 0.400, and a PacBio HiFi read's from 5.7 to 4.95."""
     comptime CHUNK = 32
     comptime HALF = CHUNK // 2
-    var found = False
+    var holds = UInt8(0)
     if count >= CHUNK:
-        var others = SIMD[DType.bool, CHUNK](fill=False)
         var index = 0
         while index + CHUNK <= count:
-            others |= encoded_chunk[CHUNK](source, count, target, index, reverse)
+            holds |= encoded_chunk[CHUNK](source, count, target, index, reverse)
             index += CHUNK
         if index < count:
-            others |= encoded_chunk[CHUNK](source, count, target, count - CHUNK, reverse)
-        found = others.reduce_or()
+            holds |= encoded_chunk[CHUNK](source, count, target, count - CHUNK, reverse)
     elif count >= HALF:
-        var others = encoded_chunk[HALF](source, count, target, 0, reverse)
-        others |= encoded_chunk[HALF](source, count, target, count - HALF, reverse)
-        found = others.reduce_or()
+        holds = encoded_chunk[HALF](source, count, target, 0, reverse)
+        holds |= encoded_chunk[HALF](source, count, target, count - HALF, reverse)
     else:
         for index in range(count):
-            found |= encoded_chunk[1](source, count, target, index, reverse)[0]
-    return not found
+            holds |= encoded_chunk[1](source, count, target, index, reverse)
+    return holds
 
 
 def symbol_codes(
-    first: ImmSpan[UInt8, _], second: ImmSpan[UInt8, _], mut column_codes: List[UInt8], mut row_codes: List[UInt8]
+    first: ImmSpan[UInt8, _],
+    second: ImmSpan[UInt8, _],
+    mut column_codes: List[UInt8],
+    mut row_codes: List[UInt8],
+    codes_are_bases: Bool,
 ) raises AlignmentError:
     """Recodes the bytes that are not bases, which the bases' codes read as one: each the next free
     code from four, in the order the bytes first appear; past four such symbols, three bits run out.
+    The bases' 2-bit codes are taken as bases only with `codes_are_bases`, when no letter `A`, `C`, `G` or `T`
+    shares the pair; else each is a symbol of its own, as the wavefront, comparing bytes, takes it.
 
     Only the sixteen-byte chunks holding such a byte are gone through byte by byte: coded one byte at
     a time, a 10 kbp read with one `N` took five times as long to code as without.
@@ -820,9 +843,10 @@ def symbol_codes(
     table[ord("C")] = 1
     table[ord("G")] = 2
     table[ord("T")] = 3
-    # The bases' 2-bit codes, as `encoded_bases` takes them.
-    for code in range(4):
-        table[code] = Int16(code)
+    # The bases' 2-bit codes, as `encoded_bases` takes them, unless letters share the pair.
+    if codes_are_bases:
+        for code in range(4):
+            table[code] = Int16(code)
     var next_code = 4
     recode_symbols(first, column_codes, table, next_code)
     recode_symbols(second, row_codes, table, next_code)
@@ -966,15 +990,15 @@ struct Profile(Movable):
         # Only the codes are built here; the planes wait for a band (see `build_planes`).
         self.column_codes.resize(unsafe_uninit_length=self.columns)
         self.row_codes.resize(unsafe_uninit_length=self.rows)
-        var bases = encoded_bases(first.unsafe_ptr(), self.columns, self.column_codes.unsafe_ptr(), reverse)
-        bases = encoded_bases(second.unsafe_ptr(), self.rows, self.row_codes.unsafe_ptr(), reverse) and bases
-        self.extended = not bases
+        var holds = encoded_bases(first.unsafe_ptr(), self.columns, self.column_codes.unsafe_ptr(), reverse)
+        holds |= encoded_bases(second.unsafe_ptr(), self.rows, self.row_codes.unsafe_ptr(), reverse)
+        self.extended = not bases_alone(holds)
         if self.extended:
             # Symbols are numbered in the order they first appear, front to back: coded again that way.
             if reverse:
                 _ = encoded_bases(first.unsafe_ptr(), self.columns, self.column_codes.unsafe_ptr())
                 _ = encoded_bases(second.unsafe_ptr(), self.rows, self.row_codes.unsafe_ptr())
-            symbol_codes(first, second, self.column_codes, self.row_codes)
+            symbol_codes(first, second, self.column_codes, self.row_codes, (holds & HOLDS_LETTERS) == 0)
             if reverse:
                 reverse_bytes(self.column_codes.unsafe_ptr(), self.columns)
                 reverse_bytes(self.row_codes.unsafe_ptr(), self.rows)
