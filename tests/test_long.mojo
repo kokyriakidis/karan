@@ -16,6 +16,7 @@ from std.random import random_ui64, seed
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 
 from karan import ErrorKind, LongAligner, LongAlignment, LongPreset, Seed, encode_nt4, name_hash
+from karan.cigar import run_length, run_letter
 from karan.chaining import Packed, chain_dp, chain_rmq, mg_log2
 from karan.long_align import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH
 from mm2_seeds import Mm2Index, mm2_seeds
@@ -229,6 +230,11 @@ def test_reverse_strand() raises:
     assert_equal(hits[0].query_start, 0)
     assert_equal(hits[0].query_end, 12000)
     assert_equal(hits[0].cigar_string(), "12000M")
+    # The library's runs, as an `Alignment`'s: one run of 12,000 `M`.
+    var runs = hits[0].runs()
+    assert_equal(len(runs), 1)
+    assert_equal(run_length(runs[0]), 12000)
+    assert_equal(run_letter(runs[0]), UInt8(ord("M")))
     var chains = aligner.chains(20000, len(query), Span(seeded[0]), LongPreset.map_hifi())
     assert_equal(len(chains), 1)
     assert_true(chains[0].reverse and chains[0].primary)

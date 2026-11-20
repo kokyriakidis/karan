@@ -7,6 +7,7 @@ come back, with the letter codes and query-name hash minimap2 uses, and the chec
 
 from std.sys import is_defined, stderr
 
+from .cigar import run_of
 from .errors import AlignmentError
 
 comptime LONG_TRACE = is_defined["KARAN_LONG_TRACE"]()
@@ -304,6 +305,19 @@ struct LongAlignment(Copyable, Movable):
     var primary: Bool
     var supplementary: Bool
     var inversion: Bool
+
+    def runs(self) -> List[UInt64]:
+        """The CIGAR as the rest of the library gives it (`Alignment.runs`, `cigar.run_of`: length above eight
+        bits, letter below), `M`, `I` and `D` as an `Alignment` with `eqx` false spells them, so one reader serves
+        both."""
+        var out = List[UInt64](capacity=len(self.cigar))
+        for run in self.cigar:
+            var op = Int(run & 0xF)
+            var letter = UInt8(ord("M")) if op == CIGAR_MATCH else (
+                UInt8(ord("I")) if op == CIGAR_INSERTION else UInt8(ord("D"))
+            )
+            out.append(run_of(letter, Int(run >> 4)))
+        return out^
 
     def cigar_string(self) -> String:
         """The CIGAR as text, minimap2's `M`, `I`, `D`."""
