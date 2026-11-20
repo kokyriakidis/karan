@@ -21,15 +21,8 @@ from .common import SubstitutionDType
 from .cigar import reversed_list, cigar_counts, cigar_matches, cigar_runs, reversed_cigar
 from .errors import AlignmentError
 from .gap_affine import kept_bytes, rings_within
-from .gap_affine import (
-    AffineExtension,
-    EndsFree,
-    cigar_within,
-    extension_of,
-    rewarded_penalties,
-    outside,
-    traced_extension,
-)
+from .gap_affine import AffineExtension, EndsFree, cigar_within, extension_of, outside, traced_extension
+from .penalties import rewarded_penalties
 from .modes import Alignment, Anchor, Band, Costs, Ties
 from .anti_diagonals import AntiDiagonals, GapLanes, lane_bits, straight_deficit, strip_rows, unreachable
 from .substitutions import SubstitutionLookup

@@ -64,19 +64,32 @@ searches find keeping only their last few costs, and each piece is aligned the s
 `solve`), so the memory stays bounded whatever the pair.
 """
 
-from std.math import gcd
 from std.sys import size_of
 
 from .common import FIRST_SENTINEL, SECOND_SENTINEL, UNREACHED
 from .cigar import reverse_bytes, reversed_into, reversed_list
-from .bit_parallel import append_moves, DIAGONAL, LEFT, UP
-from .substitutions import uniform_pair
-from .edit_distance import EditSpace
+from .bit_parallel import append_moves, LEFT
 from .errors import AlignmentError, ErrorKind
-from .ksw_ties import TieBuffers
 from .modes import Anchor, Band, Costs, Ties, Mode
+from .penalties import (
+    ALIGNED,
+    along_first,
+    ENTRY_MASK,
+    FIRST_GAP,
+    gap_layer,
+    layer_bit,
+    layers_of,
+    MAX_PIECES,
+    MAX_WINDOW,
+    Penalties,
+    penalties_of,
+    rewarded_penalties,
+    scaled_penalties,
+    SECOND_GAP,
+    wavefront_penalties,
+)
 from .slides import GATHERED_SLIDES, gathered_slides, slide
-from .traceback import cigar_string, EditPath, matched_back, ordered_cigar
+from .traceback import matched_back, ordered_cigar
 from .diagonal import GIVE_UP_SHARE
 from .differences import difference_bits, path_bytes, swept_cost, swept_path
 from .probes import (
@@ -92,6 +105,7 @@ from .probes import (
     FORWARD_STEPS,
     MEETS,
     ProbeCounts,
+    Tally,
     PROBES,
     SPLITS,
     SWEEP_CELLS,
@@ -130,38 +144,6 @@ comptime DEFAULT_MAX_MEMORY = HISTORY_LIMIT * KEPT_BYTES
 comptime HISTORY_KEPT_PER_LETTER = 8
 """Diagonals a recording search makes room for per letter of the pair before its kept fronts first grow."""
 
-comptime ALIGNED = Int(DIAGONAL)
-"""The front ending in two letters aligned, a match or a substitution; as a move, the bit-parallel
-traceback's `DIAGONAL`, so either's moves spell a CIGAR alike (see `traceback.cigar_string`)."""
-comptime FIRST_GAP = Int(LEFT)
-"""The front ending in a letter of the first sequence against a gap of the first piece; a move that
-consumes a letter of the first sequence alone, `LEFT`."""
-comptime SECOND_GAP = Int(UP)
-"""The front ending in a letter of the second sequence against a gap of the first piece; a move that
-consumes a letter of the second sequence alone, `UP`."""
-comptime MAX_PIECES = 2
-"""Gap pieces a cost may have: a gap of `k` letters costs the least of `opening + k extension` over them."""
-
-
-@always_inline
-def layers_of[pieces: Int]() -> Int:
-    """Fronts a cost keeps: the alignment front and two gap layers a piece, one each way."""
-    return 1 + 2 * pieces
-
-
-@always_inline
-def gap_layer(piece: Int, along_first: Bool) -> Int:
-    """The layer of `piece`'s gaps of the first sequence's letters, or of the second's: `FIRST_GAP` and
-    `SECOND_GAP` for the first piece, the next two for the second."""
-    return 1 + 2 * piece + (0 if along_first else 1)
-
-
-@always_inline
-def along_first(layer: Int) -> Bool:
-    """Whether a gap layer's letters are the first sequence's, its moves `FIRST_GAP`."""
-    return (layer - 1) % 2 == 0
-
-
 comptime CELLS_PER_STEP = 7
 """Cells of the full sweep in differences (see `differences`) that one diagonal step of the fronts costs
 about as much as: the exchange rate by which the wavefront judges a sweep would finish first. Measured, not
@@ -191,118 +173,6 @@ extension alone: the piece after a split inside that gap."""
 comptime OPENING = 8
 """An origin of `OPENING + g` must open a gap of layer `g` with its first move: the backward search of
 the piece before a split inside that gap, which must end in it."""
-
-
-struct Penalties(ImplicitlyCopyable, TrivialRegisterPassable):
-    """The wavefront's costs for one scoring, and what turns a cost back into a score. A second gap
-    piece, `opening2` and `extension2`, counts only where a search runs two (see `MAX_PIECES`). A gap
-    of the first sequence's letters, a deletion, has its own costs, the `deletion_` ones, which are an
-    insertion's unless set otherwise; each gap layer reads its own (see `opening_of`)."""
-
-    var mismatch: Int
-    var opening: Int
-    """Charged once a gap run, on top of `extension` for its first letter."""
-    var extension: Int
-    var scale: Int
-    """The common factor the costs were divided by."""
-    var reward: Int
-    """The match score, which every letter of both sequences earns half of before the costs."""
-    var opening2: Int
-    var extension2: Int
-    var deletion_opening: Int
-    var deletion_extension: Int
-    var deletion_opening2: Int
-    var deletion_extension2: Int
-    var layer_openings: SIMD[DType.int32, 8]
-    """Each gap layer's opening, at the layer's index, so a walk over layers reads one lane."""
-    var layer_extensions: SIMD[DType.int32, 8]
-
-    def __init__(
-        out self,
-        mismatch: Int,
-        opening: Int,
-        extension: Int,
-        scale: Int,
-        reward: Int,
-        opening2: Int,
-        extension2: Int,
-    ):
-        """Costs whose deletions cost what insertions do."""
-        self.mismatch = mismatch
-        self.opening = opening
-        self.extension = extension
-        self.scale = scale
-        self.reward = reward
-        self.opening2 = opening2
-        self.extension2 = extension2
-        self.deletion_opening = opening
-        self.deletion_extension = extension
-        self.deletion_opening2 = opening2
-        self.deletion_extension2 = extension2
-        self.layer_openings = SIMD[DType.int32, 8](0)
-        self.layer_extensions = SIMD[DType.int32, 8](0)
-        self.tabulate()
-
-    def set_deletions(mut self, opening: Int, extension: Int, opening2: Int, extension2: Int):
-        """A deletion's own costs, a gap of the first sequence's letters."""
-        self.deletion_opening = opening
-        self.deletion_extension = extension
-        self.deletion_opening2 = opening2
-        self.deletion_extension2 = extension2
-        self.tabulate()
-
-    def tabulate(mut self):
-        """Each gap layer's opening and extension at its index (see `gap_layer`)."""
-        self.layer_openings[gap_layer(0, True)] = Int32(self.deletion_opening)
-        self.layer_openings[gap_layer(0, False)] = Int32(self.opening)
-        self.layer_openings[gap_layer(1, True)] = Int32(self.deletion_opening2)
-        self.layer_openings[gap_layer(1, False)] = Int32(self.opening2)
-        self.layer_extensions[gap_layer(0, True)] = Int32(self.deletion_extension)
-        self.layer_extensions[gap_layer(0, False)] = Int32(self.extension)
-        self.layer_extensions[gap_layer(1, True)] = Int32(self.deletion_extension2)
-        self.layer_extensions[gap_layer(1, False)] = Int32(self.extension2)
-
-    def score(self, cost: Int, letters: Int) -> Int:
-        """The Gotoh score of an alignment over `letters` letters in all, costing `cost`."""
-        return (self.reward * letters - cost * self.scale) // 2
-
-    @always_inline
-    def opening_of(self, layer: Int) -> Int:
-        """A gap layer's opening: its piece's, for its direction."""
-        return Int(self.layer_openings[layer])
-
-    @always_inline
-    def extension_of(self, layer: Int) -> Int:
-        """A gap layer's extension: its piece's, for its direction."""
-        return Int(self.layer_extensions[layer])
-
-    def window[pieces: Int](self) -> Int:
-        """The dearest single move: a substitution, or a gap's first letter in any piece either way."""
-        var dearest = self.mismatch
-        comptime for layer in range(1, layers_of[pieces]()):
-            dearest = max(dearest, self.opening_of(layer) + self.extension_of(layer))
-        return dearest
-
-    def widest_opening[pieces: Int](self) -> Int:
-        """The dearest opening, what a meeting inside a gap pays once for both halves at most."""
-        var widest = 0
-        comptime for layer in range(1, layers_of[pieces]()):
-            widest = max(widest, self.opening_of(layer))
-        return widest
-
-    def cheapest_extension[pieces: Int](self) -> Int:
-        """The cheapest extension, what each letter a path strays off a diagonal pays at least."""
-        var cheapest = Int.MAX
-        comptime for layer in range(1, layers_of[pieces]()):
-            cheapest = min(cheapest, self.extension_of(layer))
-        return cheapest
-
-
-comptime MAX_WINDOW = 1 << 16
-"""The dearest single move a wavefront takes, in its costs' common factor (see `Penalties.window`): its
-rings hold a front for each of the last that many costs, a kilobyte or two each, so past this even a
-pair of a few letters would take hundreds of megabytes, and the layers' costs could pass their 32 bits.
-Dear gaps far past any aligner's, an opening of 100,000 among them, stay within it."""
 
 
 comptime ORDINARY_WINDOW = 64
@@ -365,63 +235,6 @@ def rings_within(
         )
 
 
-def scaled_penalties(costs: Costs, reward: Int, folded: Bool) raises AlignmentError -> Penalties:
-    """The wavefront's costs for `costs`, deletions and insertions each their own, with `folded` a match
-    earning `reward` folded in as for a global alignment or an extension (see the module's notes), all
-    divided by their common factor."""
-    if reward < 0 or costs.mismatch <= 0:
-        raise AlignmentError(
-            ErrorKind.INVALID_SCORING, "a match earns at least nothing, and a mismatch and an extension must cost"
-        )
-    var two = costs.pieces() == 2
-    var values: List[Int] = [
-        2 * (reward + costs.mismatch) if folded else costs.mismatch,
-        costs.opening,
-        costs.extension,
-        costs.deletion_opening,
-        costs.deletion_extension,
-    ]
-    if two:
-        values.append(costs.opening2)
-        values.append(costs.extension2)
-        values.append(costs.deletion_opening2)
-        values.append(costs.deletion_extension2)
-    for index in range(1, len(values)):
-        if values[index] < 0 or (index % 2 == 0 and values[index] <= 0):
-            raise AlignmentError(
-                ErrorKind.INVALID_SCORING,
-                String("costs ", costs, ": an extension must cost, an opening no less than nothing"),
-            )
-        if folded:
-            # A gap's opening doubles, its extension doubles and pays half the reward a letter.
-            values[index] = 2 * values[index] + (reward if index % 2 == 0 else 0)
-    var scale = 0
-    for value in values:
-        scale = gcd(scale, value)
-    var out = Penalties(
-        values[0] // scale,
-        values[1] // scale,
-        values[2] // scale,
-        scale,
-        reward,
-        values[5] // scale if two else 0,
-        values[6] // scale if two else 0,
-    )
-    out.set_deletions(
-        values[3] // scale, values[4] // scale, values[7] // scale if two else 0, values[8] // scale if two else 0
-    )
-    # From the costs themselves, not the layers' 32 bits they may not fit.
-    var dearest = values[0] // scale
-    for index in range(1, len(values), 2):
-        dearest = max(dearest, (values[index] + values[index + 1]) // scale)
-    if dearest > MAX_WINDOW:
-        raise AlignmentError(
-            ErrorKind.INVALID_SCORING,
-            String("costs ", costs, ": a move dearer than ", MAX_WINDOW, " in their common factor"),
-        )
-    return out
-
-
 @fieldwise_init
 struct EndsFree(ImplicitlyCopyable, TrivialRegisterPassable, Writable):
     """How many letters at each end of each sequence an alignment may leave unaligned for nothing, as
@@ -453,35 +266,6 @@ struct EndsFree(ImplicitlyCopyable, TrivialRegisterPassable, Writable):
         )
 
 
-def wavefront_penalties(
-    substitutions: List[Scalar[DType.int8]], alphabet_size: Int, open: Int, extend: Int
-) -> Optional[Penalties]:
-    """The wavefront costs for a table of one match and one mismatch score, if it is one.
-
-    `open` and `extend` are the Gotoh gap scores, a run of `k` scoring `open + (k - 1) extend`.
-    None when the table is not uniform, or when the costs would not all be positive: a free
-    mismatch or extension would let a front grow without its cost growing.
-    """
-    var uniform = uniform_pair(substitutions, alphabet_size)
-    if not uniform:
-        return None
-    var reward = uniform.value()[0]
-    var mismatch = uniform.value()[1]
-    # A run of `k` scores `open + (k - 1) extend`, so it costs `(extend - open) - k extend`.
-    var gap_opening = extend - open
-    var gap_extension = -extend
-    var x = 2 * (reward - mismatch)
-    var o = 2 * gap_opening
-    var e = 2 * gap_extension + reward
-    if x <= 0 or e <= 0 or o < 0:
-        return None
-    var scale = gcd(gcd(x, e), o)
-    # Past the wavefront's rings, the table's own sweeps, whose memory the scores do not set.
-    if max(x, o + e) // scale > MAX_WINDOW:
-        return None
-    return Penalties(x // scale, o // scale, e // scale, scale, reward, 0, 0)
-
-
 def padded(codes: Span[UInt8, _], sentinel: UInt8, reverse: Bool) -> List[UInt8]:
     """The codes, back to front with `reverse`, and `PADDING` sentinels after them."""
     var out = List[UInt8]()
@@ -511,16 +295,6 @@ def padded_into(mut out: List[UInt8], codes: Span[UInt8, _], sentinel: UInt8, re
         reversed_into(destination, source, count)
     else:
         Span(unsafe_ptr=destination, length=count).copy_from(codes)
-
-
-comptime ENTRY_MASK = UInt8(7)
-"""A flag's low three bits: the layer the alignment front's entry came from, zero for a substitution."""
-
-
-@always_inline
-def layer_bit(layer: Int) -> UInt8:
-    """A flag's bit for gap layer `layer`, above `ENTRY_MASK`'s three."""
-    return UInt8(1) << UInt8(2 + layer)
 
 
 def opened_bit(layer: Int) -> UInt8:
@@ -1245,7 +1019,7 @@ struct Wavefront[pieces: Int](Movable):
         gaps: Bool = False,
     ):
         """This search begun afresh over a new pair, as `__init__` begins one, the memory its sequences
-        and rings held kept for the next pair of a batch (see `SearchSpace`)."""
+        and rings held kept for the next pair of a batch (see `WavefrontSpace`)."""
         self.columns = len(first)
         self.rows = len(second)
         self.walked = False
@@ -1937,7 +1711,7 @@ def wavefront_distance[
     """The least cost of a global alignment of two encoded sequences, the letters `ends_free` allows
     left unaligned for nothing, inside `band`, or -1 when every one costs more than `ceiling` or none
     stays inside: the two searches keeping only their rings, no fronts for a traceback."""
-    var space = SearchSpace()
+    var space = WavefrontSpace()
     return wavefront_distance[pieces](first, second, penalties, ceiling, space, ends_free, band)
 
 
@@ -1948,7 +1722,7 @@ def wavefront_distance[
     second: Span[UInt8, _],
     penalties: Penalties,
     ceiling: Int,
-    mut space: SearchSpace,
+    mut space: WavefrontSpace,
     ends_free: EndsFree = EndsFree(),
     band: Band = Band(),
 ) -> Int:
@@ -2149,10 +1923,10 @@ def traced_alone[
         search.advance[True]()
 
 
-struct SearchSpace(Movable):
+struct WavefrontSpace(Movable):
     """A batch worker's two searches of each gap shape, kept from pair to pair so a pair reuses the
     memory the last one's sequences, rings and kept fronts took (see `Wavefront.start`), for a distance
-    or an alignment alike."""
+    or an alignment alike. `search_space.SearchSpace` holds it beside the other engines' memory."""
 
     var forward: Optional[Wavefront[1]]
     var backward: Optional[Wavefront[1]]
@@ -2161,12 +1935,8 @@ struct SearchSpace(Movable):
     var costs: Optional[Costs]
     """The costs the last pair took, whose `penalties` a batch's next pairs take again."""
     var penalties: Optional[Penalties]
-    var edit: EditSpace
-    """The memory a unit-cost pair's edit distance takes, kept the same way."""
     var moves: List[UInt8]
     """A global alignment's moves (see `cigar_within`), kept the same way."""
-    var ties: TieBuffers
-    """The memory `Ties.KSW2`'s writing again takes (see `ksw_ties`), kept the same way."""
 
     def __init__(out self):
         """No searches yet: the first pair builds them."""
@@ -2176,9 +1946,7 @@ struct SearchSpace(Movable):
         self.backward2 = None
         self.costs = None
         self.penalties = None
-        self.edit = EditSpace()
         self.moves = List[UInt8]()
-        self.ties = TieBuffers()
 
     def penalties_for(mut self, costs: Costs) raises AlignmentError -> Penalties:
         """`penalties_of(costs)`, worked out once for a batch's costs and not again for each pair: their
@@ -2188,8 +1956,8 @@ struct SearchSpace(Movable):
             self.costs = costs
         return self.penalties.value()
 
-    def tally_wavefronts(mut self, started: Int):
-        """The wavefronts' probes since the last call into the edit space's tally, in a build with probes
+    def tally_into(mut self, mut tally: Tally, started: Int):
+        """The wavefronts' probes since the last call into `tally`, in a build with probes
         (see `probes`): their steps, diagonals, meetings, splits and any sweep taken instead, the time
         since `started`, a tally's `start()`, less the sweep's, and which engine settled the pair."""
         comptime if PROBES:
@@ -2228,7 +1996,6 @@ struct SearchSpace(Movable):
                 steps_backward += search.probe.get(SEARCH_STEPS)
                 diagonals += search.probe.get(SEARCH_DIAGONALS)
                 search.probe.reset()
-            ref tally = self.edit.tally
             tally.add(FORWARD_STEPS, steps_forward)
             tally.add(BACKWARD_STEPS, steps_backward)
             tally.add(WAVEFRONT_DIAGONALS, diagonals)
@@ -2813,17 +2580,6 @@ struct AffineCigar(Copyable, Movable, Writable):
     var walked: Bool
 
 
-def penalties_of(costs: Costs) raises AlignmentError -> Penalties:
-    """The wavefront's costs for `costs`, one gap piece or two, either way, divided by their common factor."""
-    return scaled_penalties(costs, 0, False)
-
-
-def rewarded_penalties(match_score: Int, costs: Costs) raises AlignmentError -> Penalties:
-    """The wavefront's costs for a match earning `match_score` under `costs`, the reward folded in (see
-    the module's notes), deletions and insertions each their own."""
-    return scaled_penalties(costs, match_score, True)
-
-
 def outside(band: Band) -> AlignmentError:
     """The error of a pair no alignment inside `band` fits, naming its diagonals."""
     return AlignmentError(ErrorKind.OUTSIDE_BAND, String("diagonals ", band.low, "..=", band.high))
@@ -2844,7 +2600,7 @@ def cigar_within[
     """An optimal global alignment's cost and CIGAR, the one `ties` picks, or None when its cost, in
     `penalties`' units, would pass `ceiling`, or none fits `band`; split past `limit` kept diagonals
     (see `solve`)."""
-    var space = SearchSpace()
+    var space = WavefrontSpace()
     return cigar_within[pieces](first, second, penalties, eqx, ceiling, space, band, ties, limit)
 
 
@@ -2856,7 +2612,7 @@ def cigar_within[
     penalties: Penalties,
     eqx: Bool,
     ceiling: Int,
-    mut space: SearchSpace,
+    mut space: WavefrontSpace,
     band: Band = Band(),
     ties: Ties = Ties.LEFT,
     limit: Int = HISTORY_LIMIT,
@@ -3216,7 +2972,7 @@ def free_ends_alignment[
     limit: Int = HISTORY_LIMIT,
 ) -> Optional[Spanned]:
     """`free_ends_alignment` through the searches given, built the first time and begun afresh after,
-    as a batch's worker keeps them (see `SearchSpace`)."""
+    as a batch's worker keeps them (see `WavefrontSpace`)."""
     var a = first
     var b = second
     var columns = len(a)

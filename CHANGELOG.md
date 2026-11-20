@@ -13,7 +13,16 @@ Licensed under the Mozilla Public License 2.0 (see LICENSE and NOTICE).
 Formerly dinara-align: the project, the Mojo and Python packages (`karan`), the command line (`karan`)
 and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all take the one name.
 
-### Fixed before the first release
+### Layout
+
+- No module imports one above it: `gap_affine` and `differences` no longer import each other (`penalties` holds the
+  wavefront's costs and every conversion from `Costs`), and `gap_affine` no longer holds the other engines' memory
+  (`search_space.SearchSpace`, over `gap_affine.WavefrontSpace`). `api` holds the public calls alone; `engines`
+  chooses one pair's engine and `batches` runs many. Code that imported `SearchSpace` from `karan.gap_affine` imports
+  it from `karan.search_space`; the internals `karan.api` gave (`cost_within`, `aligned_within`, `each_pair`, ...)
+  come from `karan.engines` and `karan.batches`, `aligned` and `aligned_within` still through `karan.api` too.
+- `LongAlignment.runs()`: its CIGAR as the rest of the library's runs, one reader for both.
+
 
 Found by six reviews of the package and by running every test and fuzzer with all bounds checks on
 (`-D ASSERT=all`), each with a test of its own:

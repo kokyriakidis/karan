@@ -50,19 +50,18 @@ from .device_align import (
     serving_space,
 )
 from .errors import AlignmentError, ErrorKind
+from .search_space import SearchSpace
 from .gap_affine import (
     DEFAULT_MAX_MEMORY,
     KEPT_BYTES,
     EndsFree,
-    Penalties,
-    SearchSpace,
     cigar_of,
     rings_fit,
     global_path,
     wavefront_align,
-    wavefront_penalties,
     wavefront_score,
 )
+from .penalties import Penalties, wavefront_penalties
 from .gotoh import AffineGapCosts, AlignmentMode, GappedAlignment, Rectangle, RowPath, linear_path, serial_align
 from .lanes import (
     TABLE_ENTRIES,
@@ -832,8 +831,8 @@ def wavefront_alignment(
     var letters = len(first_codes) + len(second_codes)
     var moves = List[UInt8](capacity=letters)
     var cost = global_path[1](
-        space.forward,
-        space.backward,
+        space.wave.forward,
+        space.wave.backward,
         Span(first_codes),
         Span(second_codes),
         penalties,

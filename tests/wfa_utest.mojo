@@ -21,14 +21,8 @@ not offer, are left out.
 from std.sys import argv
 
 from karan import Band, Costs, Mode, Placement, Scoring, Ties, align, distance
-from karan.gap_affine import (
-    EndsFree,
-    FREE_START,
-    Penalties,
-    penalties_of,
-    cigar_of,
-    solve,
-)
+from karan.gap_affine import EndsFree, FREE_START, cigar_of, solve
+from karan.penalties import Penalties, penalties_of
 
 comptime EDIT = 0
 """Unit costs, the edit distance, a score WFA2-lib reports as the distance itself."""

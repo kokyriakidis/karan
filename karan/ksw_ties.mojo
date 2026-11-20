@@ -27,9 +27,8 @@ wavefront search visits.
 """
 
 
-from std.math import gcd
-
 from .modes import Costs
+from .penalties import reduced_costs
 
 comptime INF = Int32(1 << 29)
 
@@ -726,31 +725,6 @@ def _guide_cost(guide: Span[UInt64, _], reference: Span[UInt8, _], query: Span[U
     return Int32(total)
 
 
-def _reduced(costs: Costs) -> Costs:
-    """`costs` divided by their common factor, which picks the same alignments by the same rule; a second piece's
-    absent `-1` kept."""
-    var two = costs.pieces() == 2
-    var factor = gcd(gcd(costs.mismatch, costs.opening), gcd(costs.extension, costs.deletion_opening))
-    factor = gcd(factor, costs.deletion_extension)
-    if two:
-        factor = gcd(gcd(factor, costs.opening2), costs.extension2)
-        factor = gcd(gcd(factor, costs.deletion_opening2), costs.deletion_extension2)
-    if factor <= 1:
-        return costs
-    var out = Costs(
-        costs.mismatch // factor,
-        costs.opening // factor,
-        costs.extension // factor,
-        costs.opening2 // factor if two else costs.opening2,
-        costs.extension2 // factor if two else costs.extension2,
-    )
-    out.deletion_opening = costs.deletion_opening // factor
-    out.deletion_extension = costs.deletion_extension // factor
-    out.deletion_opening2 = costs.deletion_opening2 // factor if two else costs.deletion_opening2
-    out.deletion_extension2 = costs.deletion_extension2 // factor if two else costs.deletion_extension2
-    return out
-
-
 def ksw_cigar(
     reference: Span[UInt8, _],
     query: Span[UInt8, _],
@@ -775,7 +749,7 @@ def ksw_cigar(
     # The cells count costs in 32 bits below `INF`, a gap's whole run on top of a cell's: costs reduced to their
     # common factor first (the same alignments by the same rule), and a pair whose gap could still wrap, or whose
     # guide already costs past `INF`, keeps its guide, the same cost by WFA's rule.
-    var reduced = _reduced(costs)
+    var reduced = reduced_costs(costs)
     if reduced.dearest_step() * (max(n, m) + 1) >= Int(Int32.MAX) // 2 or (
         _guide_cost(guide, reference, query, reduced) >= INF - 1 and _spans(guide, n, m)
     ):

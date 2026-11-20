@@ -14,6 +14,20 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
 
 `pixi run sync-skills` refreshes them from upstream; `.claude/skills/UPSTREAM` records the commit.
 
+## Layout
+
+From the top down; a module imports only modules below it (no cycles):
+
+- `api`: the public calls and `Aligner`, nothing else. `engines` picks the engine for one pair (`cost_within`,
+  `aligned_within`, the lanes for one pair); `batches` runs many (lanes, threads longest first, the GPU).
+- `search_space`: one thread's memory for every engine (`gap_affine.WavefrontSpace`, `edit_distance.EditSpace`,
+  `ksw_ties.TieBuffers`), so no engine holds another's.
+- Engines: `gap_affine` (wavefront), `differences` (sweep), `edit_distance`/`band`/`bit_parallel`/`diagonal`/`seeds`
+  (unit costs), `scored`, `lanes`, `scoring`/`gotoh`/`vector_score` (substitution tables), `ksw2*`/`ksw_ties`.
+- `penalties`: every conversion from `Costs` to an engine's costs and the checks on them; `modes` (public types),
+  `cigar`, `common`, `errors` at the bottom.
+- `long_*` and `chaining`: the minimap2 port, its own island over `ksw2` (see `long_align`'s docstring).
+
 ## Working here
 
 - Build and test: `pixi run test`; format: `pixi run format` (120 columns).

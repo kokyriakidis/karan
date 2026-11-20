@@ -63,21 +63,23 @@ from karan.bit_parallel import Profile
 from karan.diagonal import DiagonalFronts, diagonal_transition, EDITS_PER_STEP, StepCost, trace_diagonals
 from karan.traceback import EditPath, cigar_string
 from karan.gap_affine import (
-    ALIGNED,
     EndsFree,
     extension_of,
     free_ends_alignment,
     traced_extension,
-    FIRST_GAP,
     FREE_START,
-    SECOND_GAP,
-    Penalties,
-    penalties_of,
-    rewarded_penalties,
     Wavefront,
     solve,
     trace,
     wavefront_align,
+)
+from karan.penalties import (
+    ALIGNED,
+    FIRST_GAP,
+    SECOND_GAP,
+    Penalties,
+    penalties_of,
+    rewarded_penalties,
     wavefront_penalties,
 )
 from karan.substitutions import SubstitutionLookup
@@ -3644,7 +3646,7 @@ def test_lane_scores_match_single_pairs() raises:
 
 
 def test_batches_reuse_their_searches_cleanly() raises:
-    """A batch's worker keeps its searches from pair to pair (see `gap_affine.SearchSpace`), so a pair
+    """A batch's worker keeps its searches from pair to pair (see `search_space.SearchSpace`), so a pair
     must never see the last one's state: long pairs after short and short after long, identical and
     unrelated, an empty side, under one and two gap pieces and deletions priced apart, globally and with
     free ends, each pair's batch cost the one a call of its own gives, and each alignment the one a call

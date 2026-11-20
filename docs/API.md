@@ -109,7 +109,7 @@ default every edit as far left as it goes, indels placed as minimap2 places them
 `Ties.RIGHT` as far right, WFA2-lib's CIGAR byte for byte, whichever search found the cost.
 
 Every byte is a symbol matching only itself, so DNA in either case, or any other text, needs no
-alphabet. The wavefront's work grows with the square of the cost rather than with the matrix, and
+alphabet; only 0xFE and 0xFF, which UTF-8 never holds, are refused (`ErrorKind.UNKNOWN_SYMBOL`). The wavefront's work grows with the square of the cost rather than with the matrix, and
 its memory stays bounded: the fronts it keeps for the traceback, the bulk of it, stay within
 `max_memory` bytes, past which the pair is split where an optimal path crosses and each piece
 aligned alone (see `gap_affine.solve`), the cost still the least, the tie rule followed within each
@@ -352,7 +352,7 @@ def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(
 def align(mut self, reference: Span[UInt8], query: Span[UInt8], costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080), runs: Bool = False) -> Alignment
 ```
 
-`align` over the two sequences' bytes, through this aligner's memory: a caller holding its sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call. The bytes may be letters or the bases' 2-bit codes (0 `A`, 1 `C`, 2 `G`, 3 `T`; any other byte a symbol of its own), the same alignment either way. With `runs`, the CIGAR comes as `Alignment.runs`, numbers (`cigar.run_of`), `cigar` left empty: no text written and parsed back.
+`align` over the two sequences' bytes, through this aligner's memory: a caller holding its sequences as bytes, as a POA graph's or a FASTQ reader's are, makes no `String` a call. The bytes may be letters or the bases' 2-bit codes (0 `A`, 1 `C`, 2 `G`, 3 `T`; any other byte a symbol of its own), the same alignment either way, both sequences the same way: a code matches only itself, never its letter. With `runs`, the CIGAR comes as `Alignment.runs`, numbers (`cigar.run_of`), `cigar` left empty: no text written and parsed back.
 
 ```mojo
 def align(mut self, reference: String, query: String, costs: Costs = Costs.edit(), mode: Mode = Mode.GLOBAL, *, max_cost: Int, band: Band = Band(), ties: Ties = Ties.KSW2, eqx: Bool = True, max_memory: Int = Int(83886080)) -> Optional[Alignment]
@@ -562,6 +562,14 @@ One alignment of the query, as a line of minimap2's PAF holds it: the query's in
 | `supplementary` | `Bool` |  |
 | `inversion` | `Bool` |  |
 
+#### `runs`
+
+```mojo
+def runs(self) -> List[UInt64]
+```
+
+The CIGAR as the rest of the library gives it (`Alignment.runs`, `cigar.run_of`: length above eight bits, letter below), `M`, `I` and `D` as an `Alignment` with `eqx` false spells them, so one reader serves both.
+
 #### `cigar_string`
 
 ```mojo
@@ -753,6 +761,14 @@ outside an extension, with no reward, it is minus the cost.
 ```mojo
 def Alignment.__init__(out self, cost: Int, score: Int, var cigar: String, reference_start: Int, reference_end: Int, query_start: Int, query_end: Int, var runs: List[UInt64] = List())
 ```
+
+#### `cigar_text`
+
+```mojo
+def cigar_text(self) -> String
+```
+
+The CIGAR as text: `cigar`, or spelled from `runs` when the alignment came as runs alone. The helpers below read it, so they serve either form.
 
 #### `gapped`
 

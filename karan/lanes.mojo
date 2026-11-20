@@ -57,7 +57,8 @@ from .ablation import ABLATE_CERTIFIED
 from .cigar import reverse_bytes, reversed_text
 from .substitutions import SHUFFLED_ENTRIES, looked_up
 from .common import next_share, spread
-from .gap_affine import ALIGNED, ENTRY_MASK, EndsFree, Penalties, FIRST_GAP, SECOND_GAP, gap_layer, layer_bit
+from .gap_affine import EndsFree
+from .penalties import ALIGNED, ENTRY_MASK, Penalties, FIRST_GAP, SECOND_GAP, gap_layer, layer_bit
 from .modes import Band, Costs, Mode
 
 

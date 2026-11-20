@@ -34,7 +34,7 @@ from std.memory import unsafe_memcpy
 from std.sys import size_of
 
 from .cigar import reverse_bytes, reversed_list
-from .gap_affine import ALIGNED, ENTRY_MASK, FIRST_GAP, SECOND_GAP, Penalties, gap_layer, layer_bit
+from .penalties import ALIGNED, ENTRY_MASK, FIRST_GAP, SECOND_GAP, Penalties, gap_layer, layer_bit
 from .modes import Ties
 
 comptime SECOND_DELETION = gap_layer(1, True)

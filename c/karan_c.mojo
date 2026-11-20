@@ -35,21 +35,13 @@ from karan import (
     score,
     search,
 )
-from karan.api import (
-    aligned,
-    aligned_within,
-    alignment_from_lanes,
-    alignments_in_lanes,
-    cost_within,
-    distances_in_lanes,
-    each_pair,
-    ksw_rewrite,
-    longest_first,
-    rewarded_costs,
-)
+from karan.batches import alignment_from_lanes, alignments_in_lanes, distances_in_lanes, each_pair, longest_first
+from karan.engines import aligned, aligned_within, cost_within, ksw_rewrite, rewarded_costs
 from karan.cigar import text_of
 from karan.common import FIRST_SENTINEL, spread
-from karan.gap_affine import KEPT_BYTES, Penalties, SearchSpace, cigar_of, penalties_of
+from karan.gap_affine import KEPT_BYTES, cigar_of
+from karan.penalties import Penalties, penalties_of
+from karan.search_space import SearchSpace
 from karan.lanes import LaneCosts, Texts, lane_alignments, lane_distances, lane_free_alignments
 
 comptime UNSUPPORTED_SYMBOLS = -1
