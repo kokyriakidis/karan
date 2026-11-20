@@ -441,19 +441,29 @@ struct Aligner(Movable):
 
 
 def holds_sentinel(text: ImmSpan[UInt8, _]) -> Bool:
-    """Whether `text` holds 0xFE or 0xFF, the bytes the wavefront marks the sequences' ends with, thirty-two at a
-    time."""
+    """Whether `text` holds 0xFE or 0xFF, the bytes the wavefront marks the sequences' ends with: thirty-two at a
+    time, the bytes past the last whole chunk in one chunk that ends the text, as `encoded_bases` takes them."""
     comptime CHUNK = 32
+    comptime HALF = CHUNK // 2
     var bytes = text.unsafe_ptr()
-    var index = 0
-    var found = SIMD[DType.bool, CHUNK](fill=False)
-    while index + CHUNK <= len(text):
-        found |= bytes.unsafe_offset(index).unsafe_load[width=CHUNK]().ge(FIRST_SENTINEL)
-        index += CHUNK
-    for at in range(index, len(text)):
-        if bytes[unsafe_offset=at] >= FIRST_SENTINEL:
+    var count = len(text)
+    if count >= CHUNK:
+        var found = SIMD[DType.bool, CHUNK](fill=False)
+        var index = 0
+        while index + CHUNK <= count:
+            found |= bytes.unsafe_offset(index).unsafe_load[width=CHUNK]().ge(FIRST_SENTINEL)
+            index += CHUNK
+        if index < count:
+            found |= bytes.unsafe_offset(count - CHUNK).unsafe_load[width=CHUNK]().ge(FIRST_SENTINEL)
+        return found.reduce_or()
+    if count >= HALF:
+        var found = bytes.unsafe_load[width=HALF]().ge(FIRST_SENTINEL)
+        found |= bytes.unsafe_offset(count - HALF).unsafe_load[width=HALF]().ge(FIRST_SENTINEL)
+        return found.reduce_or()
+    for index in range(count):
+        if bytes[unsafe_offset=index] >= FIRST_SENTINEL:
             return True
-    return found.reduce_or()
+    return False
 
 
 def refuse_sentinels(reference: ImmSpan[UInt8, _], query: ImmSpan[UInt8, _]) raises AlignmentError:

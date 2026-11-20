@@ -765,10 +765,19 @@ def bases_alone(holds: UInt8) -> Bool:
 @always_inline
 def encoded_chunk[
     width: Int
-](source: ImmPointer[UInt8, _], count: Int, target: MutPointer[UInt8, _], at: Int, reverse: Bool) -> UInt8:
+](
+    source: ImmPointer[UInt8, _],
+    count: Int,
+    target: MutPointer[UInt8, _],
+    at: Int,
+    reverse: Bool,
+    mut letters: SIMD[DType.bool, width],
+    mut codes: SIMD[DType.bool, width],
+    mut others: SIMD[DType.bool, width],
+):
     """Writes the codes of `width` bytes to `target` from `at` on, those from `at` on in `source`, or with
-    `reverse` those `at` from its end back to front, and gives what they hold (`HOLDS_LETTERS`, `HOLDS_CODES`,
-    `HOLDS_OTHERS`)."""
+    `reverse` those `at` from its end back to front, and marks in `letters`, `codes` and `others` which lanes held
+    `A`, `C`, `G` or `T`, a base's 2-bit code, or neither (reduced once a sequence, in `encoded_bases`)."""
     var bytes: SIMD[DType.uint8, width]
     if reverse:
         bytes = source.unsafe_offset(count - at - width).unsafe_load[width=width]()
@@ -780,11 +789,23 @@ def encoded_chunk[
     # codes, no letters made of them): kept as it is. A pair that holds both letters and codes is recoded.
     var coded = bytes.lt(4)
     target.unsafe_offset(at).unsafe_store(coded.select(bytes, base_codes[width](bytes)))
-    var others = not_bases[width](bytes)
-    var holds = HOLDS_CODES if coded.reduce_or() else UInt8(0)
-    if (~others).reduce_or():
+    var not_letters = not_bases[width](bytes)
+    letters |= ~not_letters
+    codes |= coded
+    others |= not_letters & ~coded
+
+
+@always_inline
+def holds_of[
+    width: Int
+](letters: SIMD[DType.bool, width], codes: SIMD[DType.bool, width], others: SIMD[DType.bool, width]) -> UInt8:
+    """The `HOLDS_*` bits the three marks give."""
+    var holds = UInt8(0)
+    if letters.reduce_or():
         holds |= HOLDS_LETTERS
-    if (others & ~coded).reduce_or():
+    if codes.reduce_or():
+        holds |= HOLDS_CODES
+    if others.reduce_or():
         holds |= HOLDS_OTHERS
     return holds
 
@@ -805,21 +826,30 @@ def encoded_bases(
     to 0.400, and a PacBio HiFi read's from 5.7 to 4.95."""
     comptime CHUNK = 32
     comptime HALF = CHUNK // 2
-    var holds = UInt8(0)
     if count >= CHUNK:
+        var letters = SIMD[DType.bool, CHUNK](fill=False)
+        var codes = SIMD[DType.bool, CHUNK](fill=False)
+        var others = SIMD[DType.bool, CHUNK](fill=False)
         var index = 0
         while index + CHUNK <= count:
-            holds |= encoded_chunk[CHUNK](source, count, target, index, reverse)
+            encoded_chunk[CHUNK](source, count, target, index, reverse, letters, codes, others)
             index += CHUNK
         if index < count:
-            holds |= encoded_chunk[CHUNK](source, count, target, count - CHUNK, reverse)
-    elif count >= HALF:
-        holds = encoded_chunk[HALF](source, count, target, 0, reverse)
-        holds |= encoded_chunk[HALF](source, count, target, count - HALF, reverse)
-    else:
-        for index in range(count):
-            holds |= encoded_chunk[1](source, count, target, index, reverse)
-    return holds
+            encoded_chunk[CHUNK](source, count, target, count - CHUNK, reverse, letters, codes, others)
+        return holds_of[CHUNK](letters, codes, others)
+    if count >= HALF:
+        var letters = SIMD[DType.bool, HALF](fill=False)
+        var codes = SIMD[DType.bool, HALF](fill=False)
+        var others = SIMD[DType.bool, HALF](fill=False)
+        encoded_chunk[HALF](source, count, target, 0, reverse, letters, codes, others)
+        encoded_chunk[HALF](source, count, target, count - HALF, reverse, letters, codes, others)
+        return holds_of[HALF](letters, codes, others)
+    var letters = SIMD[DType.bool, 1](fill=False)
+    var codes = SIMD[DType.bool, 1](fill=False)
+    var others = SIMD[DType.bool, 1](fill=False)
+    for index in range(count):
+        encoded_chunk[1](source, count, target, index, reverse, letters, codes, others)
+    return holds_of[1](letters, codes, others)
 
 
 def symbol_codes(
