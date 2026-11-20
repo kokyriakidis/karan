@@ -103,14 +103,14 @@ def test_contig_matches_minimap2() raises:
 
 
 def test_mg_log2() raises:
-    """minimap2's fast log2 is exact at powers of two and within 0.01 between."""
+    """The fast log2 of minimap2 is exact at powers of two and within 0.01 between."""
     assert_true(abs(mg_log2(2.0) - 1.0) < 0.01)
     assert_true(abs(mg_log2(1024.0) - 10.0) < 0.01)
     assert_true(abs(mg_log2(3.0) - 1.585) < 0.01)
 
 
 def test_name_hash() raises:
-    """khash's X31 string hash: h = 31 h + c."""
+    """The X31 string hash of khash: h = 31 h + c."""
     assert_equal(name_hash("ab"), UInt32(97 * 31 + 98))
     assert_equal(name_hash(""), UInt32(0))
 
@@ -161,7 +161,7 @@ def test_tandem_copy_number_difference() raises:
     seed(11)
     var unit = random_dna(300)
     var reference = random_dna(8000)
-    for copy in range(12):
+    for _ in range(12):
         var each = unit.copy()
         for _ in range(3):
             var at = Int(random_ui64(0, 299))

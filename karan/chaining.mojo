@@ -136,13 +136,10 @@ struct ChainSet(Movable):
 def stable_sort_by_x(mut a: List[Packed]):
     """`radix_sort_128x`: the anchors by `x`, those with equal `x` kept in their order."""
 
-    def less(left: Tuple[UInt64, Int], right: Tuple[UInt64, Int]) -> Bool:
-        return left[0] < right[0] or (left[0] == right[0] and left[1] < right[1])
-
     var keys = List[Tuple[UInt64, Int]](capacity=len(a))
     for index in range(len(a)):
         keys.append((a[index].x, index))
-    sort(Span(keys), less)
+    sort(Span(keys))
     var sorted = List[Packed](capacity=len(a))
     for key in keys:
         sorted.append(a[key[1]])
@@ -165,10 +162,7 @@ def chain_backtrack(
     if len(z) == 0:
         return (u^, v^)
 
-    def less(left: Tuple[Int32, Int], right: Tuple[Int32, Int]) -> Bool:
-        return left[0] < right[0] or (left[0] == right[0] and left[1] < right[1])
-
-    sort(Span(z), less)
+    sort(Span(z))
     for i in range(n):
         t[i] = 0
     for k in range(len(z) - 1, -1, -1):
@@ -177,7 +171,7 @@ def chain_backtrack(
             continue
         var n_v0 = len(v)
         # mg_chain_bk_end: where the chain from z[k] should stop.
-        var end_i = -1
+        var end_i: Int
         var max_i = top
         var max_s = Int32(0)
         var i = top
@@ -228,10 +222,7 @@ def compact(u: List[UInt64], v: List[Int], a: List[Packed]) -> ChainSet:
     for i in range(len(u)):
         w.append((b[starts[i]].x, i))
 
-    def less(left: Tuple[UInt64, Int], right: Tuple[UInt64, Int]) -> Bool:
-        return left[0] < right[0] or (left[0] == right[0] and left[1] < right[1])
-
-    sort(Span(w), less)
+    sort(Span(w))
     var out = ChainSet(List[Packed](capacity=len(b)), List[UInt64](capacity=len(u)))
     for entry in w:
         var j = entry[1]
@@ -495,10 +486,7 @@ def chain_rmq(
     for j in range(n):
         order.append((a[j].query_end(), j))
 
-    def less(left: Tuple[Int32, Int], right: Tuple[Int32, Int]) -> Bool:
-        return left[0] < right[0] or (left[0] == right[0] and left[1] < right[1])
-
-    sort(Span(order), less)
+    sort(Span(order))
     # Each anchor's leaf, and in leaf order what the inner look reads: positions, span, score, the predecessor's
     # leaf and minimap2's t[] (which the backtrack clears before its own use).
     var leaf_of = List[Int](length=n, fill=0)
