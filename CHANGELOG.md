@@ -52,6 +52,12 @@ and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all t
   paftools calls; on 2,657 HiFi reads all 4,812 records the same, mapping qualities too (`pixi run test-long`).
   `mg_lchain_rmq`'s AVL tree is a segment tree and a 64-ary bit tree here, which take the leftmost of two anchors of
   equal priority; minimap2's `ksw_extz2_sse` (equal gap pieces) is not ported, so such costs run `ksw_extd2`.
+  Laid out as minimap2's files are (`long_types`, `chaining`, `long_regions` for `hit.c` and `esterr.c`,
+  `long_fill` for `align.c`, `long_align` for `map.c`), each function named after the one it ports. `align` and
+  `chains` raise an `AlignmentError` on options minimap2's `mm_check_opt` refuses (`LongPreset.check`), on bytes that
+  are not `encode_nt4` codes and on seeds outside either sequence, which before read past the reference. A build with
+  `-D KARAN_LONG_TRACE` (`pixi run build-long-trace`) traces each stage to standard error. `CIGAR_MATCH`,
+  `CIGAR_INSERTION` and `CIGAR_DELETION`, which read `LongAlignment.cigar`, are exported from `karan`.
 - One API for every cost model and mode: `distance`, `align` and `score` take `Costs` (unit, linear,
   gap-affine, two-piece gap-affine, deletions priced apart from insertions) and a `Mode` of three
   kinds, as WFA2-lib's ends-free and extension and abPOA's local: any free ends, with the presets

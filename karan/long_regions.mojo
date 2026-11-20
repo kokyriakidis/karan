@@ -10,7 +10,7 @@ that each function reads against its namesake.
 from std.math import log, pow
 
 from .chaining import ChainSet, Packed, mg_log2
-from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LongPreset
+from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LONG_TRACE, LongPreset, trace
 
 comptime PARENT_UNSET = -1
 comptime PARENT_TMP_PRI = -2
@@ -91,6 +91,27 @@ struct Region(Copyable, Movable):
         self.dp_max2 = 0
         self.n_ambi = 0
         self.cigar.clear()
+
+
+def trace_region(stage: StaticString, r: Region):
+    """A region's trace line: its id and parent, chain score and anchors, strand, extent (query forward strand),
+    divergence and, once aligned, its scores and mapping quality."""
+    comptime if LONG_TRACE:
+        trace(
+            String(
+                t"{stage}\tid={r.id}\tparent={r.parent}\tscore={r.score}\tcnt={r.cnt}\t{'-' if r.rev else '+'}\t"
+                t"q={r.qs}-{r.qe}\tr={r.rs}-{r.re}\tdiv={r.div}\taligned={r.has_p}\tdp_score={r.dp_score}\t"
+                t"dp_max={r.dp_max}\tdp_max2={r.dp_max2}\tmlen={r.mlen}\tblen={r.blen}\tsubsc={r.subsc}\t"
+                t"n_sub={r.n_sub}\tmapq={r.mapq}\tinv={r.inv}\tsplit={r.split}"
+            )
+        )
+
+
+def trace_regions(stage: StaticString, regs: List[Region]):
+    """Every region's trace line, in order."""
+    comptime if LONG_TRACE:
+        for r in regs:
+            trace_region(stage, r)
 
 
 @always_inline
@@ -440,6 +461,17 @@ def filter_regs(mut regs: List[Region], preset: LongPreset, qlen: Int):
                 flt = True
         if not flt:
             kept.append(r.copy())
+        else:
+            comptime if LONG_TRACE:
+                # Dropped, and why: the first test that failed.
+                var why: StaticString = "mm_filter_regs:clipped"
+                if not r.inv and r.cnt < preset.min_cnt:
+                    why = "mm_filter_regs:anchors"
+                elif r.mlen < preset.min_chain_score:
+                    why = "mm_filter_regs:mlen"
+                elif r.dp_max < preset.min_dp_max:
+                    why = "mm_filter_regs:dp_max"
+                trace_region(why, r)
     regs = kept^
 
 

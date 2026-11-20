@@ -24,6 +24,9 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
 - `pixi run test-ksw2` holds `karan.ksw2` to minimap2's C byte for byte and `ksw2_lanes` and `ksw2_gpu` to it (the GPU
   test runs on the host's GPU, an Apple M2 included); `pixi run test-ksw-ties` holds `Ties.KSW2` to it. hcm and herro2
   rely on those CIGARs being minimap2's: run both after any change to the three modules.
+- `pixi run test-long` holds `LongAligner` (`long_*.mojo`, `chaining.mojo`) to minimap2 2.28's PAF on a kept window; the
+  full parity check is `build/long_paf` against minimap2 with `benchmarks/long_parity.py` (see `benchmarks/README.md`).
+  `pixi run build-long-trace` builds it with each stage traced, to find where a line first differs.
 - `pixi run profile duel|rivals|regret|probes|peak|perf|modes|scaling|noise|compare|all` finds where time goes,
   what each engine choice cost and where a rival wins (see `benchmarks/README.md`, Profiling); probes compile
   in only with `-D KARAN_PROBES`, forced policies only with `-D KARAN_FORCE`.

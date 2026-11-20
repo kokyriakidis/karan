@@ -10,7 +10,7 @@ fixed and scored. Internal: the bodies keep the C's shape and names so that each
 from .chaining import SEED_IGNORE, SEED_LONG_JOIN, SEED_TANDEM, Packed, mg_log2
 from .ksw2 import KSW_EZ_APPROX_MAX, KSW_EZ_EXTZ_ONLY, KSW_EZ_REV_CIGAR, KSW_EZ_RIGHT, KswBuffers, KswResult, ksw_extd2
 from .long_regions import PARENT_TMP_PRI, PARENT_UNSET, Region, split_reg
-from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LongPreset
+from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LONG_TRACE, LongPreset, trace
 
 comptime KSW_L = 16
 """The vector width `ksw_extd2` follows: minimap2's SSE build, so its CIGARs byte for byte."""
@@ -455,6 +455,21 @@ def align_pair(
     )
 
 
+def trace_fill(
+    stage: StaticString, region: Int, qs: Int, qe: Int, rs: Int, re: Int, band: Int, zdrop_test: Int, ez: KswResult
+):
+    """A KSW2 call's trace line: the region, the query (on the strand aligned) and reference stretches it was given,
+    its band, `mm_test_zdrop`'s verdict on a gap fill (0, 1 or 2; -1 for an end), and what `ksw_extd2` returned."""
+    comptime if LONG_TRACE:
+        trace(
+            String(
+                t"{stage}\tregion={region}\tq={qs}-{qe}\tr={rs}-{re}\tband={band}\tzdrop_test={zdrop_test}\t"
+                t"score={ez.score}\tmax={ez.max}\tmax_q={ez.max_q}\tmax_t={ez.max_t}\treach_end={ez.reach_end}\t"
+                t"zdropped={ez.zdropped}\tcigar_runs={len(ez.cigar)}"
+            )
+        )
+
+
 struct Drop:
     """`update_max_zdrop`'s state: the best score so far and where, and the largest drop below it, less the gap
     extension of the diagonal shift, and its two ends."""
@@ -657,6 +672,7 @@ def align1(
             buf,
             ez,
         )
+        trace_fill("mm_align1:left", r.id, qs0, qs, rs0, rs, bw, -1, ez)
         if len(ez.cigar) > 0:
             append_cigar(r, ez.cigar)
             r.dp_score += ez.max
@@ -689,6 +705,7 @@ def align1(
             if zdrop_code != 0:
                 var zdrop = preset.zdrop_inv if zdrop_code == 2 else preset.zdrop
                 align_pair(preset, qpiece, tpiece, mat, bw1, -1, zdrop, 0, buf, ez)
+            trace_fill("mm_align1:fill", r.id, qs, qe, rs, re, bw1, zdrop_code, ez)
             if len(ez.cigar) > 0:
                 append_cigar(r, ez.cigar)
             r.has_p = True
@@ -708,6 +725,8 @@ def align1(
                     r2 = split_reg(r, as1 + j + 1 - r.as_, qlen, a)
                     if zdrop_code == 2:
                         r2.split_inv = True
+                    comptime if LONG_TRACE:
+                        trace(String(t"mm_split_reg\tregion={r.id}\tat_anchor={j + 1}\tinversion={zdrop_code == 2}"))
                 break
             r.dp_score += ez.score
             rs = re
@@ -726,6 +745,7 @@ def align1(
             buf,
             ez,
         )
+        trace_fill("mm_align1:right", r.id, qe, qe0, re, re0, bw, -1, ez)
         if len(ez.cigar) > 0:
             append_cigar(r, ez.cigar)
             r.dp_score += ez.max

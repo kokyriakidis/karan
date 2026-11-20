@@ -51,5 +51,10 @@ jobs:
         run: pixi run test-c
       - name: WFA2-lib regression set
         run: pixi run test-wfa
+      - name: minimap2's KSW2 and long alignment
+        run: |
+          pixi run test-ksw2
+          pixi run test-ksw-ties
+          pixi run test-long
       - name: Fuzzing
         run: pixi run fuzz 2000

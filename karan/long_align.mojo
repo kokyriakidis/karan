@@ -45,6 +45,7 @@ minimap2 is looked up by name:
 from .chaining import SEED_TANDEM, ChainSet, Packed, chain_dp, chain_rmq, stable_sort_by_x
 from .ksw2 import KswBuffers, KswResult
 from .long_fill import align1, align1_inv, gen_mat
+from .errors import AlignmentError
 from .long_regions import (
     Region,
     est_err,
@@ -56,6 +57,7 @@ from .long_regions import (
     set_mapq,
     set_parent,
     set_sam_pri,
+    trace_regions,
     update_dp_max,
     wang32,
 )
@@ -63,13 +65,36 @@ from .long_types import (
     CIGAR_DELETION,
     CIGAR_INSERTION,
     CIGAR_MATCH,
+    LONG_TRACE,
     LongAlignment,
     LongChain,
     LongPreset,
     Seed,
+    check_inputs,
+    check_seeds,
     encode_nt4,
     name_hash,
+    trace,
 )
+
+
+def trace_chains(stage: StaticString, chains: ChainSet):
+    """Each chain's trace line: its score, anchors, strand and its first and last anchors' ends (reference, query on
+    the chain's strand)."""
+    comptime if LONG_TRACE:
+        var k = 0
+        for index in range(len(chains.u)):
+            var count = Int(chains.u[index] & 0xFFFFFFFF)
+            var first = chains.a[k]
+            var last = chains.a[k + count - 1]
+            trace(
+                String(
+                    t"{stage}\tchain={index}\tscore={Int(chains.u[index] >> 32)}\tcnt={count}\t"
+                    t"{'-' if first.reverse() else '+'}\tfirst={first.reference_end()},{first.query_end()}\t"
+                    t"last={last.reference_end()},{last.query_end()}"
+                )
+            )
+            k += count
 
 
 def chain_seeds(
@@ -151,6 +176,10 @@ def chain_seeds(
             pen_skip,
             a,
         )
+    if preset.rmq:
+        trace_chains("mg_lchain_rmq", chains)
+    else:
+        trace_chains("mg_lchain_dp", chains)
     if preset.bw_long > preset.bw and preset.long_join and len(chains.u) > 1:
         var st = Int(chains.a[0].query_end())
         var en = Int(chains.a[Int(chains.u[0] & 0xFFFFFFFF) - 1].query_end())
@@ -168,12 +197,15 @@ def chain_seeds(
                 pen_skip,
                 chains.a,
             )
+            trace_chains("long_join", chains)
     var hash = wang32(name_hash ^ (wang32(UInt32(qlen)) + wang32(11)))
     regs = gen_regs(hash, qlen, chains)
+    trace_regions("mm_gen_regs", regs)
     set_parent(regs, preset.mask_level, preset.mask_len, preset.match_score * 2 + preset.mismatch)
     select_sub(regs, preset.pri_ratio, preset.k * 2, preset.best_n, True, Int(Float64(preset.max_gap) * 0.8))
     est_err(qlen, reference_length, regs, chains.a, mini_pos)
     filter_strand_retained(regs)
+    trace_regions("mm_filter_strand_retained", regs)
     a = chains^.anchors()
 
 
@@ -205,11 +237,16 @@ struct LongAligner(Movable):
         seeds: Span[Seed, _],
         preset: LongPreset,
         name_hash: UInt32 = 0,
-    ) -> List[LongChain]:
+    ) raises AlignmentError -> List[LongChain]:
         """The chains minimap2 would go on to align, best first, without aligning them: the seeds chained and
-        re-chained, primaries and secondaries chosen."""
+        re-chained, primaries and secondaries chosen. Raises as `align` does, on the preset or a seed past either
+        length."""
+        preset.check()
+        check_seeds(reference_length, query_length, seeds)
         var regs = List[Region]()
         var a = List[Packed]()
+        if query_length == 0 or reference_length == 0 or len(seeds) == 0:
+            return List[LongChain]()
         chain_seeds(reference_length, query_length, seeds, preset, name_hash, regs, a)
         var out = List[LongChain](capacity=len(regs))
         for r in regs:
@@ -224,14 +261,22 @@ struct LongAligner(Movable):
         preset: LongPreset,
         name_hash: UInt32 = 0,
         repeat_length: Int = 0,
-    ) -> List[LongAlignment]:
+    ) raises AlignmentError -> List[LongAlignment]:
         """The query's alignments to the reference as minimap2 makes them from these seeds, best first: primaries,
         then secondaries within `pri_ratio` of theirs. The sequences are minimap2's codes (`encode_nt4`); seeds
         hold forward-strand query positions. `name_hash` (`name_hash(query_name)`) breaks ties among equal chains
         as minimap2 breaks them for that name; `repeat_length`, the query letters under seeds left out as too
-        frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does."""
+        frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does.
+
+        Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a byte other than the codes 0
+        to 4 in either sequence, a sequence past `MAX_LONG_LENGTH` or a seed outside 1 to 255 letters inside both
+        (`check_inputs`)."""
+        preset.check()
+        check_inputs(reference, query, seeds)
         var qlen = len(query)
         var out = List[LongAlignment]()
+        comptime if LONG_TRACE:
+            trace(String(t"query\tqlen={qlen}\treference={len(reference)}\tseeds={len(seeds)}\tname_hash={name_hash}"))
         if qlen == 0 or len(reference) == 0 or len(seeds) == 0:
             return out^
         var regs = List[Region]()
@@ -273,15 +318,18 @@ struct LongAligner(Movable):
                     regs.insert(i + 1, inv.take())
                     i += 1
             i += 1
+        trace_regions("mm_align1", regs)
         filter_regs(regs, preset, qlen)
         if qlen >= preset.rank_min_len:
             update_dp_max(qlen, regs, preset.rank_frac, preset.match_score, preset.mismatch)
+            trace_regions("mm_update_dp_max", regs)
             filter_regs(regs, preset, qlen)
         hit_sort(regs)
         set_parent(regs, preset.mask_level, preset.mask_len, preset.match_score * 2 + preset.mismatch)
         select_sub(regs, preset.pri_ratio, preset.k * 2, preset.best_n, False, Int(Float64(preset.max_gap) * 0.8))
         _ = set_sam_pri(regs)
         set_mapq(regs, preset.min_chain_score, preset.match_score, repeat_length)
+        trace_regions("mm_set_mapq", regs)
         for r in regs:
             if not r.has_p:
                 continue

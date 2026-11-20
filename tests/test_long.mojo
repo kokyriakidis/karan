@@ -13,9 +13,9 @@ strand.
 """
 
 from std.random import random_ui64, seed
-from std.testing import TestSuite, assert_equal, assert_true
+from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 
-from karan import LongAligner, LongAlignment, LongPreset, Seed, encode_nt4, name_hash
+from karan import ErrorKind, LongAligner, LongAlignment, LongPreset, Seed, encode_nt4, name_hash
 from karan.chaining import Packed, chain_dp, chain_rmq, mg_log2
 from karan.long_align import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH
 from mm2_seeds import Mm2Index, mm2_seeds
@@ -232,6 +232,126 @@ def test_reverse_strand() raises:
     var chains = aligner.chains(20000, len(query), Span(seeded[0]), LongPreset.map_hifi())
     assert_equal(len(chains), 1)
     assert_true(chains[0].reverse and chains[0].primary)
+
+
+def test_presets_pass_their_own_check() raises:
+    """Every named preset is one minimap2 takes."""
+    for preset in [
+        LongPreset.map_ont(),
+        LongPreset.map_hifi(),
+        LongPreset.asm5(),
+        LongPreset.asm10(),
+        LongPreset.asm20(),
+        LongPreset.dipcall(),
+    ]:
+        preset.check()
+
+
+def test_rejects_options_minimap2_refuses() raises:
+    """The rules of mm_check_opt: positive gap costs, the two pieces crossing, at most 127 together, --score-N below -B,
+    the Z-drop at least the inversion's, and a match that scores."""
+    var aligner = LongAligner()
+    var codes = encode_nt4("ACGTACGTACGTACGTACGTACGT".as_bytes())
+    var same = codes.copy()
+    var seeds: List[Seed] = [Seed(0, 0, 19, False, False)]
+    var cases = List[LongPreset]()
+    var p = LongPreset.map_hifi()
+    p.gap_extend = 0
+    cases.append(p)
+    p = LongPreset.map_hifi()
+    p.long_gap_extend = 3  # not below gap_extend
+    cases.append(p)
+    p = LongPreset.asm5()
+    p.long_gap_open = 90  # (39 + 3) + (90 + 1) > 127
+    cases.append(p)
+    p = LongPreset.map_hifi()
+    p.ambiguous = 4  # not below mismatch
+    cases.append(p)
+    p = LongPreset.map_hifi()
+    p.zdrop_inv = p.zdrop + 1
+    cases.append(p)
+    p = LongPreset.map_hifi()
+    p.match_score = 0
+    cases.append(p)
+    for preset in cases:
+        var raised = False
+        try:
+            _ = aligner.align(Span(codes), Span(same), Span(seeds), preset)
+        except e:
+            raised = e.kind == ErrorKind.INVALID_SCORING or e.kind == ErrorKind.INVALID_ARGUMENT
+        assert_true(raised)
+
+
+def test_rejects_seeds_outside_the_sequences() raises:
+    """A seed past either sequence's end, before its start or of a span outside 1 to 255 raises rather than reading
+    past the sequence, before any chaining, in `chains` as in `align`."""
+    seed(3)
+    var text = random_dna(3000)
+    var reference = encode_nt4(Span(text)[0:2000])
+    var query = encode_nt4(Span(text)[1000:3000])
+    var aligner = LongAligner()
+    for bad in [
+        Seed(1990, 0, 19, False, False),
+        Seed(0, 1990, 19, False, False),
+        Seed(-1, 0, 19, False, False),
+        Seed(0, 0, 0, False, False),
+        Seed(0, 0, 256, False, False),
+    ]:
+        var seeds = List[Seed]()
+        for index in range(0, 900, 20):
+            seeds.append(Seed(1000 + index, index, 19, False, False))
+        seeds.append(bad)
+        var raised = 0
+        try:
+            _ = aligner.align(Span(reference), Span(query), Span(seeds), LongPreset.map_hifi())
+        except e:
+            raised += Int(e.kind == ErrorKind.INVALID_ARGUMENT)
+        try:
+            _ = aligner.chains(len(reference), len(query), Span(seeds), LongPreset.map_hifi())
+        except e:
+            raised += Int(e.kind == ErrorKind.INVALID_ARGUMENT)
+        assert_equal(raised, 2)
+
+
+def test_rejects_letters_not_encoded() raises:
+    """Letters rather than minimap2's codes raise: the score table holds five codes."""
+    seed(3)
+    var text = random_dna(3000)
+    var reference = encode_nt4(Span(text))
+    var seeds = List[Seed]()
+    for index in range(0, 1900, 20):
+        seeds.append(Seed(1000 + index, index, 19, False, False))
+    var aligner = LongAligner()
+    with assert_raises(contains="encode_nt4"):
+        _ = aligner.align(Span(reference), Span(text)[1000:3000], Span(seeds), LongPreset.map_hifi())
+    with assert_raises(contains="encode_nt4"):
+        _ = aligner.align(Span(text), Span(reference)[1000:3000], Span(seeds), LongPreset.map_hifi())
+
+
+def test_degenerate_inputs() raises:
+    """No seeds, one seed, an empty query, a query of Ns and seeds that are all tandem: no alignment, or one that
+    holds the whole query, and nothing read out of range."""
+    seed(3)
+    var text = random_dna(5000)
+    var reference = encode_nt4(Span(text))
+    var query = encode_nt4(Span(text)[1000:3000])
+    var aligner = LongAligner()
+    var preset = LongPreset.map_hifi()
+    var none = List[Seed]()
+    assert_equal(len(aligner.align(Span(reference), Span(query), Span(none), preset)), 0)
+    assert_equal(len(aligner.chains(len(reference), len(query), Span(none), preset)), 0)
+    var one: List[Seed] = [Seed(1000, 0, 19, False, False)]
+    assert_equal(len(aligner.align(Span(reference), Span(query), Span(one), preset)), 0)
+    var empty = List[UInt8]()
+    assert_equal(len(aligner.align(Span(reference), Span(empty), Span(none), preset)), 0)
+    var tandem = List[Seed]()
+    for index in range(0, 1900, 20):
+        tandem.append(Seed(1000 + index, index, 19, False, True))
+    var hits = aligner.align(Span(reference), Span(query), Span(tandem), preset)
+    assert_equal(len(hits), 1)
+    assert_equal(hits[0].cigar_string(), "2000M")
+    var ns = List[UInt8](length=2000, fill=4)
+    assert_equal(len(aligner.align(Span(reference), Span(ns), Span(tandem), preset)), 0)
 
 
 def main() raises:

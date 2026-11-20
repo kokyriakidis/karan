@@ -16,7 +16,7 @@
 
 karan finds the optimal alignment of two sequences: the least edit distance, the least gap-affine
 cost or the best score. It aligns globally, with free ends, as a seed extension or locally, and returns
-the CIGAR. **No heuristic decides the result**, and one fixed rule chooses among equally good alignments.
+the CIGAR. **No heuristic decides the result** (the minimap2 port, `LongAligner`, aside), and one fixed rule chooses among equally good alignments.
 It runs from Mojo, Python, C, C++ and the command line.
 
 ```python
@@ -302,6 +302,12 @@ on two haplotypes' contigs of HG002 chr19 tandem arrays (1.05 Mb against 2.75 Mb
 CIGARs and all 3,591 differences, and on 2,657 HiFi reads of the same region all 4,812 records the same, intervals,
 CIGARs, primary or secondary and mapping quality (`pixi run test-long` keeps a window of it; `benchmarks/long_paf.mojo`
 and `benchmarks/long_parity.py` rerun the comparison).
+
+Here the results are minimap2's, chosen by minimap2's own rules: chaining and its cutoffs are heuristic, and only
+each gap fill is exact within its band. `align` and `chains` raise an `AlignmentError` on a preset minimap2 would
+refuse, on bytes that are not `encode_nt4` codes and on a seed outside either sequence. A build with
+`-D KARAN_LONG_TRACE` (`pixi run build-long-trace`) writes each stage to standard error, one line each and named after
+the minimap2 function it ports, so a PAF line that differs can be traced to the stage where it first differs.
 
 ```mojo
 from karan import LongAligner, LongPreset, Seed, encode_nt4, name_hash

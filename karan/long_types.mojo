@@ -2,8 +2,24 @@
 # MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
 The public face of `long_align`: the seeds a caller hands in, minimap2's presets, and the alignments and chains that
-come back, with the letter codes and query-name hash minimap2 uses.
+come back, with the letter codes and query-name hash minimap2 uses, and the checks `LongAligner` makes of them.
 """
+
+from std.sys import is_defined, stderr
+
+from .errors import AlignmentError
+
+comptime LONG_TRACE = is_defined["KARAN_LONG_TRACE"]()
+"""Whether this build traces `LongAligner`, built with `-D KARAN_LONG_TRACE` (`pixi run build-long-trace`): a line to
+standard error for each stage of each query, tab-separated, its first field the minimap2 function the stage ports
+(`mm_gen_regs`, `mm_align1:fill`, `mm_filter_regs`, ...), so two runs' traces diff to the first stage that parts. A
+normal build folds every trace away."""
+
+
+def trace(line: String):
+    """One trace line to standard error; call it only under `comptime if LONG_TRACE`."""
+    print(line, file=stderr)
+
 
 comptime CIGAR_MATCH = 0
 """A packed CIGAR run's op for aligned letters, match or mismatch (`M`)."""
@@ -215,6 +231,52 @@ struct LongPreset(Copyable, ImplicitlyCopyable, Movable, Writable):
         preset.bw = 2000
         return preset
 
+    def check(self) raises AlignmentError:
+        """Raises unless minimap2 would take these options (`mm_check_opt`), and unless the scores fit the byte table
+        KSW2 reads: positive gap costs, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend <
+        long_gap_open + long_gap_extend` (or equal pieces), both pieces' open and extend together at most 127,
+        `ambiguous` in `[0, mismatch)`, `zdrop >= zdrop_inv`, `bw <= bw_long`, `k` in 1 to 255, `best_n >= 0`,
+        `pri_ratio` in `[0, 1]` and `match_score` in 1 to 127."""
+        var q = self.gap_open
+        var e = self.gap_extend
+        var q2 = self.long_gap_open
+        var e2 = self.long_gap_extend
+        if q <= 0 or e <= 0 or q2 <= 0 or e2 <= 0:
+            raise AlignmentError(
+                .INVALID_SCORING, "gap_open, gap_extend, long_gap_open and long_gap_extend must be positive"
+            )
+        if (q != q2 or e != e2) and not (e > e2 and q + e < q2 + e2):
+            raise AlignmentError(
+                .INVALID_SCORING,
+                String(
+                    t"two gap pieces need gap_extend > long_gap_extend and gap_open + gap_extend < long_gap_open +"
+                    t" long_gap_extend: {q},{e} and {q2},{e2}"
+                ),
+            )
+        if (q + e) + (q2 + e2) > 127:
+            raise AlignmentError(
+                .INVALID_SCORING,
+                String(t"(gap_open + gap_extend) + (long_gap_open + long_gap_extend) is {q + e + q2 + e2}, past 127"),
+            )
+        if self.match_score < 1 or self.match_score > 127:
+            raise AlignmentError(.INVALID_SCORING, String(t"match_score {self.match_score} is outside 1 to 127"))
+        if self.mismatch > 127:
+            raise AlignmentError(.INVALID_SCORING, String(t"mismatch {self.mismatch} is past 127"))
+        if self.ambiguous < 0 or self.ambiguous >= self.mismatch:
+            raise AlignmentError(
+                .INVALID_SCORING, String(t"ambiguous {self.ambiguous} is outside [0, mismatch {self.mismatch})")
+            )
+        if self.zdrop < self.zdrop_inv:
+            raise AlignmentError(.INVALID_ARGUMENT, String(t"zdrop {self.zdrop} is below zdrop_inv {self.zdrop_inv}"))
+        if self.bw > self.bw_long:
+            raise AlignmentError(.INVALID_ARGUMENT, String(t"bw {self.bw} is above bw_long {self.bw_long}"))
+        if self.k < 1 or self.k > 255:
+            raise AlignmentError(.INVALID_ARGUMENT, String(t"k {self.k} is outside 1 to 255"))
+        if self.best_n < 0:
+            raise AlignmentError(.INVALID_ARGUMENT, String(t"best_n {self.best_n} is negative"))
+        if self.pri_ratio < 0.0 or self.pri_ratio > 1.0:
+            raise AlignmentError(.INVALID_ARGUMENT, String(t"pri_ratio {self.pri_ratio} is outside [0, 1]"))
+
 
 @fieldwise_init
 struct LongAlignment(Copyable, Movable):
@@ -278,6 +340,60 @@ def name_hash(name: StringSlice) -> UInt32:
     for index in range(1, len(bytes)):
         h = (h << 5) - h + UInt32(bytes[index])
     return h
+
+
+comptime MAX_LONG_LENGTH = Int(Int32.MAX)
+"""The longest reference or query `LongAligner` takes: minimap2 packs positions in 32 bits."""
+
+
+def check_inputs(reference: Span[UInt8, _], query: Span[UInt8, _], seeds: Span[Seed, _]) raises AlignmentError:
+    """Raises unless both sequences are minimap2's codes (0 to 4, `encode_nt4`) no longer than `MAX_LONG_LENGTH`, and
+    unless every seed lies inside both (see `check_seeds`)."""
+    check_seeds(len(reference), len(query), seeds)
+    check_codes("reference", reference)
+    check_codes("query", query)
+
+
+def check_codes(name: StaticString, sequence: Span[UInt8, _]) raises AlignmentError:
+    """Raises unless every byte of `sequence` is one of minimap2's codes, 0 to 4."""
+    var worst = UInt8(0)
+    for code in sequence:
+        worst = max(worst, code)
+    if worst <= 4:
+        return
+    for index in range(len(sequence)):
+        if sequence[index] > 4:
+            raise AlignmentError(
+                .UNKNOWN_SYMBOL, String(t"{name} holds byte {sequence[index]} at {index}; encode it with encode_nt4")
+            )
+
+
+def check_seeds(reference_length: Int, query_length: Int, seeds: Span[Seed, _]) raises AlignmentError:
+    """Raises unless both lengths are at most `MAX_LONG_LENGTH` and every seed spans 1 to 255 letters inside both: its
+    query letters `[query, query + span)` on the forward strand and its reference letters `[reference, reference +
+    span)`."""
+    if reference_length > MAX_LONG_LENGTH or query_length > MAX_LONG_LENGTH:
+        raise AlignmentError(
+            .SEQUENCE_TOO_LONG,
+            String(t"reference {reference_length} or query {query_length} letters, past {MAX_LONG_LENGTH}"),
+        )
+    for index in range(len(seeds)):
+        var s = seeds[index]
+        if (
+            s.span < 1
+            or s.span > 255
+            or s.reference < 0
+            or s.query < 0
+            or s.reference + s.span > reference_length
+            or s.query + s.span > query_length
+        ):
+            raise AlignmentError(
+                .INVALID_ARGUMENT,
+                String(
+                    t"seed {index} (reference {s.reference}, query {s.query}, span {s.span}) is not 1 to 255 letters"
+                    t" inside the reference's {reference_length} and the query's {query_length}"
+                ),
+            )
 
 
 def encode_nt4(text: Span[UInt8, _]) -> List[UInt8]:

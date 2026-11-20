@@ -521,7 +521,7 @@ def LongAligner.__init__(out self)
 def chains(self, reference_length: Int, query_length: Int, seeds: Span[Seed], preset: LongPreset, name_hash: UInt32 = UInt32(0)) -> List[LongChain]
 ```
 
-The chains minimap2 would go on to align, best first, without aligning them: the seeds chained and re-chained, primaries and secondaries chosen.
+The chains minimap2 would go on to align, best first, without aligning them: the seeds chained and re-chained, primaries and secondaries chosen. Raises as `align` does, on the preset or a seed past either length.
 
 #### `align`
 
@@ -530,6 +530,10 @@ def align(mut self, reference: Span[UInt8], query: Span[UInt8], seeds: Span[Seed
 ```
 
 The query's alignments to the reference as minimap2 makes them from these seeds, best first: primaries, then secondaries within `pri_ratio` of theirs. The sequences are minimap2's codes (`encode_nt4`); seeds hold forward-strand query positions. `name_hash` (`name_hash(query_name)`) breaks ties among equal chains as minimap2 breaks them for that name; `repeat_length`, the query letters under seeds left out as too frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does.
+
+Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a byte other than the codes 0
+to 4 in either sequence, a sequence past `MAX_LONG_LENGTH` or a seed outside 1 to 255 letters inside both
+(`check_inputs`).
 
 ### `LongAlignment`
 
@@ -682,6 +686,14 @@ def LongPreset.dipcall() -> Self
 ```
 
 dipcall's contig alignment, `-x asm5 -z200000,10000 -r2k`: Z-drop only at an inversion, a 2 kb band.
+
+#### `check`
+
+```mojo
+def check(self)
+```
+
+Raises unless minimap2 would take these options (`mm_check_opt`), and unless the scores fit the byte table KSW2 reads: positive gap costs, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend < long_gap_open + long_gap_extend` (or equal pieces), both pieces' open and extend together at most 127, `ambiguous` in `[0, mismatch)`, `zdrop >= zdrop_inv`, `bw <= bw_long`, `k` in 1 to 255, `best_n >= 0`, `pri_ratio` in `[0, 1]` and `match_score` in 1 to 127.
 
 ### `Seed`
 
@@ -1255,3 +1267,6 @@ The wavefront's costs, if the table holds a single match and a single mismatch s
 ## Constants
 
 - `DEFAULT_MAX_MEMORY` = `83886080`: The bytes of kept fronts an alignment may hold by default, about 80 MB (see `HISTORY_LIMIT`).
+- `CIGAR_DELETION` = `2`: A packed CIGAR run's op for reference letters the query lacks (`D`).
+- `CIGAR_INSERTION` = `1`: A packed CIGAR run's op for query letters the reference lacks (`I`).
+- `CIGAR_MATCH` = `0`: A packed CIGAR run's op for aligned letters, match or mismatch (`M`).
