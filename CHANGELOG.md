@@ -13,6 +13,26 @@ Licensed under the Mozilla Public License 2.0 (see LICENSE and NOTICE).
 Formerly dinara-align: the project, the Mojo and Python packages (`karan`), the command line (`karan`)
 and the C library (`libkaran`, `karan.h`, `karan_*`, `KARAN_*`, `karan::`) all take the one name.
 
+### Fixed before the first release
+
+Found by six reviews of the package and by running every test and fuzzer with all bounds checks on
+(`-D ASSERT=all`), each with a test of its own:
+
+- A base's 2-bit code (a byte 0 to 3) matched its letter in the bit-parallel engine alone, so a distance could
+  change with a cap; a code now matches only itself in every engine, codes on both sides keeping the fast path.
+- A real 0xFE or 0xFF byte matched a sequence's end marker in the wavefront (a false `OUTSIDE_BAND`, or a read past
+  the sequence): the byte-span calls refuse it, as the C API did.
+- Capped batches raised for a pair outside the band when the cap was `Int.MAX`, failing whole CLI and Python runs
+  with `--band`; they answer None, and only the uncapped batches raise.
+- The `Alignment` helpers read the runs of an alignment asked for as `runs`.
+- `Ties.KSW2` returned a CIGAR that did not price to its cost once costs passed about 2^29.
+- `ksw_extd2` set `qe` after swapping the gap pieces, the C before; the lanes and the GPU scored a wildcard of score
+  zero `0`, KSW2 `-e2`; a long pair at large mismatch costs passed the lanes' sixteen bits and aligned off its band
+  (`scores_fit`, enforced by `submit`).
+- The command line kept whitespace and non-ASCII bytes inside sequence lines, dropped `--match-score` under an
+  overlap, and took negative `--threads` and `--max-memory`; the C++ capped batches skipped the side check.
+- An assert build stopped in `CigarWriter.finish`, on a byte it never wrote.
+
 ### Alignment
 
 - `karan.ksw2`: minimap2's `ksw_extd2_sse` (2.31) ported line for line, so the same CIGARs as minimap2: two-piece
