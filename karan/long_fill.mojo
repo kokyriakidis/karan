@@ -10,7 +10,8 @@ fixed and scored. Internal: the bodies keep the C's shape and names so that each
 from .chaining import SEED_IGNORE, SEED_LONG_JOIN, SEED_TANDEM, Packed, mg_log2
 from .ksw2 import KSW_EZ_APPROX_MAX, KSW_EZ_EXTZ_ONLY, KSW_EZ_REV_CIGAR, KSW_EZ_RIGHT, KswBuffers, KswResult, ksw_extd2
 from .long_regions import PARENT_TMP_PRI, PARENT_UNSET, Region, split_reg
-from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LONG_TRACE, LongPreset, trace
+from .errors import AlignmentError
+from .long_types import CIGAR_DELETION, CIGAR_INSERTION, CIGAR_MATCH, LONG_TRACE, LongPreset, check_codes, trace
 
 comptime KSW_L = 16
 """The vector width `ksw_extd2` follows: minimap2's SSE build, so its CIGARs byte for byte."""
@@ -412,6 +413,23 @@ def fix_bad_ends(r: Region, a: List[Packed], bw: Int, min_match: Int) -> Tuple[I
     return (as1, cnt1)
 
 
+def step_over_unordered(as1: Int, cnt1: Int, mut a: List[Packed]) -> Int:
+    """Anchors whose middle (`adjust_minier`) is not past the last one kept on both sequences marked to be stepped
+    over, and the chain ended at the last one kept: its new anchor count. Chained anchors' ends always advance, so
+    with seeds of one span, as minimap2's are, their middles do too and nothing changes; seeds of unequal spans can
+    put a middle back, where the C hands KSW2 a negative length and its CIGAR no longer matches the sequences."""
+    var last = adjust_minier(a[as1])
+    var kept = 0
+    for k in range(1, cnt1):
+        var point = adjust_minier(a[as1 + k])
+        if point[0] <= last[0] or point[1] <= last[1]:
+            a[as1 + k].y |= SEED_IGNORE
+        else:
+            last = point
+            kept = k
+    return kept + 1
+
+
 @always_inline
 def adjust_minier(anchor: Packed) -> Tuple[Int, Int]:
     """`mm_adjust_minier`: an anchor's reference and query point, the middle of its match."""
@@ -560,7 +578,7 @@ def align1(
     mut r: Region,
     mut a: List[Packed],
     mat: List[Int8],
-) -> Region:
+) raises AlignmentError -> Region:
     """`mm_align1`, not spliced: the region aligned, and the region split off it where a fill Z-dropped (no
     anchors when none)."""
     var r2 = Region()
@@ -580,6 +598,7 @@ def align1(
         cnt1 = ends[1]
     filter_bad_seeds(as1, cnt1, a, 10, 40, preset.max_gap >> 1, 10)
     filter_bad_seeds_alt(as1, cnt1, a, 30, preset.max_gap >> 1)
+    cnt1 = step_over_unordered(as1, cnt1, a)
     var start = adjust_minier(a[as1])
     var rs = start[0]
     var qs = start[1]
@@ -651,10 +670,14 @@ def align1(
     else:
         re0 = re
         qe0 = qe
+    # Every letter of the reference this region's alignment reads lies in [rs0, re0).
+    check_codes("reference", reference[rs0:re0], rs0)
 
     if qs > 0 and rs > 0:
         # The left extension, both pieces reversed, gaps as late as the score allows (early once turned back).
-        var qrev = List[UInt8](capacity=qs - qs0)
+        var qrev = List[UInt8](
+            capacity=max(qs - qs0, 0)
+        )  # empty, as the C's negative length, when unequal spans put qs0 past qs
         for index in range(qs - 1, qs0 - 1, -1):
             qrev.append(qseq_all[index])
         var trev = List[UInt8](capacity=rs - rs0)
@@ -775,7 +798,7 @@ def align1_inv(
     r1: Region,
     r2: Region,
     mat: List[Int8],
-) -> Optional[Region]:
+) raises AlignmentError -> Optional[Region]:
     """`mm_align1_inv`: between two pieces of a chain split at an inversion, the other strand's best local
     alignment, extended from its far end."""
     if (r1.split & 1) == 0 or (r2.split & 2) == 0:
@@ -793,8 +816,10 @@ def align1_inv(
     if tl < preset.min_chain_score or tl > preset.max_gap:
         return None
     # The query between the pieces on the strand opposite theirs, and the reference between them.
-    var qseq = qseq0[r2.qe : r2.qe + ql] if r1.rev else qseq0[qlen + qlen - r2.qs : qlen + qlen - r2.qs + ql]
+    var q_base = r2.qe if r1.rev else qlen + qlen - r2.qs
+    var qseq = qseq0[q_base : q_base + ql]
     var tseq = reference[r1.re : r1.re + tl]
+    check_codes("reference", tseq, r1.re)
     var qrev = List[UInt8](capacity=ql)
     for index in range(ql - 1, -1, -1):
         qrev.append(qseq[index])
@@ -806,9 +831,14 @@ def align1_inv(
         return None
     var q_off = ql - (local[1] + 1)
     var t_off = tl - (local[2] + 1)
+    # `ksw_ll_i16` may end the query in a padding row, past `ql`: the C then starts up to 7 letters before the gap,
+    # in the same buffer, as this does; it would read before the buffer where this gives up.
+    if q_base + q_off < 0:
+        return None
+    var qpiece = qseq0[q_base + q_off : q_base + ql]
     align_pair(
         preset,
-        qseq[q_off:],
+        qpiece,
         tseq[t_off:],
         mat,
         Int(Float64(preset.bw) * 1.5),
@@ -836,5 +866,5 @@ def align1_inv(
         r.qs = r.qe - (ez.max_q + 1)
     r.rs = r1.re + t_off
     r.re = r.rs + ez.max_t + 1
-    update_extra(r, qseq[q_off:], tseq[t_off:], mat, preset.gap_open, preset.gap_extend, True)
+    update_extra(r, qpiece, tseq[t_off:], mat, preset.gap_open, preset.gap_extend, True)
     return r^

@@ -252,7 +252,6 @@ def test_rejects_options_minimap2_refuses() raises:
     the Z-drop at least the inversion's, and a match that scores."""
     var aligner = LongAligner()
     var codes = encode_nt4("ACGTACGTACGTACGTACGTACGT".as_bytes())
-    var same = codes.copy()
     var seeds: List[Seed] = [Seed(0, 0, 19, False, False)]
     var cases = List[LongPreset]()
     var p = LongPreset.map_hifi()
@@ -276,7 +275,7 @@ def test_rejects_options_minimap2_refuses() raises:
     for preset in cases:
         var raised = False
         try:
-            _ = aligner.align(Span(codes), Span(same), Span(seeds), preset)
+            _ = aligner.align(Span(codes), Span(codes), Span(seeds), preset)
         except e:
             raised = e.kind == ErrorKind.INVALID_SCORING or e.kind == ErrorKind.INVALID_ARGUMENT
         assert_true(raised)

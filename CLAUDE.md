@@ -26,7 +26,8 @@ A session-start hook (`.claude/settings.json`) reminds the agent to load them; f
   rely on those CIGARs being minimap2's: run both after any change to the three modules.
 - `pixi run test-long` holds `LongAligner` (`long_*.mojo`, `chaining.mojo`) to minimap2 2.28's PAF on a kept window; the
   full parity check is `build/long_paf` against minimap2 with `benchmarks/long_parity.py` (see `benchmarks/README.md`).
-  `pixi run build-long-trace` builds it with each stage traced, to find where a line first differs.
+  `pixi run build-long-trace` builds it with each stage traced, to find where a line first differs; `pixi run fuzz-long`
+  aligns random seed sets with every read bounds-checked.
 - `pixi run profile duel|rivals|regret|probes|peak|perf|modes|scaling|noise|compare|all` finds where time goes,
   what each engine choice cost and where a rival wins (see `benchmarks/README.md`, Profiling); probes compile
   in only with `-D KARAN_PROBES`, forced policies only with `-D KARAN_FORCE`.

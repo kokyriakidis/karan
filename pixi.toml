@@ -37,6 +37,10 @@ build-long-paf = {cmd = "mojo build -I . -I tests benchmarks/long_paf.mojo -o bu
 # The same with `-D KARAN_LONG_TRACE`: each query's stages to standard error, a line each, named after the minimap2
 # function each ports, so two runs' traces diff to the first stage that parts (see karan/long_types.mojo).
 build-long-trace = {cmd = "mojo build -I . -I tests -D KARAN_LONG_TRACE benchmarks/long_paf.mojo -o build/long_paf_trace", depends-on = ["prepare"]}
+# LongAligner on random inputs and random valid seeds of every span, every read bounds-checked: `pixi run fuzz-long
+# [cases] [seed]` (see tests/fuzz_long.mojo).
+build-fuzz-long = {cmd = "mojo build -I . -I tests -D ASSERT=all tests/fuzz_long.mojo -o build/fuzz_long", depends-on = ["prepare"]}
+fuzz-long = {cmd = "./build/fuzz_long", depends-on = ["build-fuzz-long"]}
 build-test-ksw-ties = {cmd = "mojo build -I . tests/test_ksw_ties.mojo -o build/test_ksw_ties", depends-on = ["prepare"]}
 test-ksw-ties = {cmd = "./build/test_ksw_ties", depends-on = ["build-test-ksw-ties"]}
 # Random pairs, costs, modes, bands and caps, each answer held to the full matrix: `pixi run fuzz [cases] [seed]`.

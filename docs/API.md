@@ -531,9 +531,9 @@ def align(mut self, reference: Span[UInt8], query: Span[UInt8], seeds: Span[Seed
 
 The query's alignments to the reference as minimap2 makes them from these seeds, best first: primaries, then secondaries within `pri_ratio` of theirs. The sequences are minimap2's codes (`encode_nt4`); seeds hold forward-strand query positions. `name_hash` (`name_hash(query_name)`) breaks ties among equal chains as minimap2 breaks them for that name; `repeat_length`, the query letters under seeds left out as too frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does.
 
-Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a byte other than the codes 0
-to 4 in either sequence, a sequence past `MAX_LONG_LENGTH` or a seed outside 1 to 255 letters inside both
-(`check_inputs`).
+Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a sequence longer than
+2^31 - 1 letters, a seed outside 1 to 255 letters inside both sequences, or a byte other than the codes 0 to 4
+in the query or in the stretch of the reference an alignment reads.
 
 ### `LongAlignment`
 
@@ -693,7 +693,7 @@ dipcall's contig alignment, `-x asm5 -z200000,10000 -r2k`: Z-drop only at an inv
 def check(self)
 ```
 
-Raises unless minimap2 would take these options (`mm_check_opt`), and unless the scores fit the byte table KSW2 reads: positive gap costs, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend < long_gap_open + long_gap_extend` (or equal pieces), both pieces' open and extend together at most 127, `ambiguous` in `[0, mismatch)`, `zdrop >= zdrop_inv`, `bw <= bw_long`, `k` in 1 to 255, `best_n >= 0`, `pri_ratio` in `[0, 1]` and `match_score` in 1 to 127.
+Raises unless minimap2 would take these options (`mm_check_opt`), and unless the scores fit the byte table KSW2 reads: positive `gap_open` and `gap_extend`, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend < long_gap_open + long_gap_extend` (or equal pieces), both pieces' open and extend together at most 127, `ambiguous` in `[0, mismatch)`, `zdrop >= zdrop_inv`, `bw <= bw_long`, `k` in 1 to 255, `best_n >= 0`, `pri_ratio` in `[0, 1]` and `match_score` in 1 to 127.
 
 ### `Seed`
 

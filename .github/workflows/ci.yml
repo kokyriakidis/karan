@@ -56,5 +56,6 @@ jobs:
           pixi run test-ksw2
           pixi run test-ksw-ties
           pixi run test-long
+          pixi run fuzz-long 500
       - name: Fuzzing
         run: pixi run fuzz 2000

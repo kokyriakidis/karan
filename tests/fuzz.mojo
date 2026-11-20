@@ -51,7 +51,7 @@ def letters(length: Int, alphabet: String) -> String:
     var out = List[UInt8](capacity=length)
     for _ in range(length):
         out.append(symbols[draw(0, len(symbols) - 1)])
-    return String(unsafe_from_utf8=out^)
+    return String(unsafe_from_utf8=out)
 
 
 def mutated(text: String, rate: Float64, longest_gap: Int, alphabet: String) -> String:
@@ -74,7 +74,7 @@ def mutated(text: String, rate: Float64, longest_gap: Int, alphabet: String) -> 
         else:
             out.append(bytes[index])
             index += 1
-    return String(unsafe_from_utf8=out^)
+    return String(unsafe_from_utf8=out)
 
 
 def sequences() -> Tuple[String, String]:

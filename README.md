@@ -305,7 +305,10 @@ and `benchmarks/long_parity.py` rerun the comparison).
 
 Here the results are minimap2's, chosen by minimap2's own rules: chaining and its cutoffs are heuristic, and only
 each gap fill is exact within its band. `align` and `chains` raise an `AlignmentError` on a preset minimap2 would
-refuse, on bytes that are not `encode_nt4` codes and on a seed outside either sequence. A build with
+refuse, on a seed outside either sequence, and on bytes other than `encode_nt4` codes in the query or in the stretch of
+reference an alignment reads (the reference may be a whole chromosome). Seeds may differ in span, as SMEMs do; a
+chained anchor whose middle falls at or before the previous one's is stepped over, which never happens with
+minimap2's seeds, all of one span. A build with
 `-D KARAN_LONG_TRACE` (`pixi run build-long-trace`) writes each stage to standard error, one line each and named after
 the minimap2 function it ports, so a PAF line that differs can be traced to the stage where it first differs.
 

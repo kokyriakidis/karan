@@ -233,7 +233,7 @@ struct LongPreset(Copyable, ImplicitlyCopyable, Movable, Writable):
 
     def check(self) raises AlignmentError:
         """Raises unless minimap2 would take these options (`mm_check_opt`), and unless the scores fit the byte table
-        KSW2 reads: positive gap costs, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend <
+        KSW2 reads: positive `gap_open` and `gap_extend`, two pieces with `gap_extend > long_gap_extend` and `gap_open + gap_extend <
         long_gap_open + long_gap_extend` (or equal pieces), both pieces' open and extend together at most 127,
         `ambiguous` in `[0, mismatch)`, `zdrop >= zdrop_inv`, `bw <= bw_long`, `k` in 1 to 255, `best_n >= 0`,
         `pri_ratio` in `[0, 1]` and `match_score` in 1 to 127."""
@@ -241,10 +241,8 @@ struct LongPreset(Copyable, ImplicitlyCopyable, Movable, Writable):
         var e = self.gap_extend
         var q2 = self.long_gap_open
         var e2 = self.long_gap_extend
-        if q <= 0 or e <= 0 or q2 <= 0 or e2 <= 0:
-            raise AlignmentError(
-                .INVALID_SCORING, "gap_open, gap_extend, long_gap_open and long_gap_extend must be positive"
-            )
+        if q <= 0 or e <= 0:
+            raise AlignmentError(.INVALID_SCORING, String(t"gap_open {q} and gap_extend {e} must be positive"))
         if (q != q2 or e != e2) and not (e > e2 and q + e < q2 + e2):
             raise AlignmentError(
                 .INVALID_SCORING,
@@ -346,16 +344,17 @@ comptime MAX_LONG_LENGTH = Int(Int32.MAX)
 """The longest reference or query `LongAligner` takes: minimap2 packs positions in 32 bits."""
 
 
-def check_inputs(reference: Span[UInt8, _], query: Span[UInt8, _], seeds: Span[Seed, _]) raises AlignmentError:
-    """Raises unless both sequences are minimap2's codes (0 to 4, `encode_nt4`) no longer than `MAX_LONG_LENGTH`, and
-    unless every seed lies inside both (see `check_seeds`)."""
-    check_seeds(len(reference), len(query), seeds)
-    check_codes("reference", reference)
+def check_inputs(reference_length: Int, query: ImmSpan[UInt8, _], seeds: ImmSpan[Seed, _]) raises AlignmentError:
+    """Raises unless the query is minimap2's codes (0 to 4, `encode_nt4`), both lengths are at most `MAX_LONG_LENGTH`
+    and every seed lies inside both sequences (see `check_seeds`). The reference is checked where an alignment reads
+    it (`long_fill`), since a reference may be a whole chromosome and a query a short read."""
+    check_seeds(reference_length, len(query), seeds)
     check_codes("query", query)
 
 
-def check_codes(name: StaticString, sequence: Span[UInt8, _]) raises AlignmentError:
-    """Raises unless every byte of `sequence` is one of minimap2's codes, 0 to 4."""
+def check_codes(name: StaticString, sequence: ImmSpan[UInt8, _], offset: Int = 0) raises AlignmentError:
+    """Raises unless every byte of `sequence`, the stretch of `name` from `offset` on, is one of minimap2's codes, 0
+    to 4."""
     var worst = UInt8(0)
     for code in sequence:
         worst = max(worst, code)
@@ -364,11 +363,12 @@ def check_codes(name: StaticString, sequence: Span[UInt8, _]) raises AlignmentEr
     for index in range(len(sequence)):
         if sequence[index] > 4:
             raise AlignmentError(
-                .UNKNOWN_SYMBOL, String(t"{name} holds byte {sequence[index]} at {index}; encode it with encode_nt4")
+                .UNKNOWN_SYMBOL,
+                String(t"{name} holds byte {sequence[index]} at {offset + index}; encode it with encode_nt4"),
             )
 
 
-def check_seeds(reference_length: Int, query_length: Int, seeds: Span[Seed, _]) raises AlignmentError:
+def check_seeds(reference_length: Int, query_length: Int, seeds: ImmSpan[Seed, _]) raises AlignmentError:
     """Raises unless both lengths are at most `MAX_LONG_LENGTH` and every seed spans 1 to 255 letters inside both: its
     query letters `[query, query + span)` on the forward strand and its reference letters `[reference, reference +
     span)`."""
@@ -396,7 +396,7 @@ def check_seeds(reference_length: Int, query_length: Int, seeds: Span[Seed, _]) 
             )
 
 
-def encode_nt4(text: Span[UInt8, _]) -> List[UInt8]:
+def encode_nt4(text: ImmSpan[UInt8, _]) -> List[UInt8]:
     """Letters as minimap2 codes them (`seq_nt4_table`): A 0, C 1, G 2, T 3 in either case, anything else 4."""
     var out = List[UInt8](capacity=len(text))
     for byte in text:

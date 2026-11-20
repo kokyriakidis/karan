@@ -77,7 +77,7 @@ def reversed_bytes(text: String) -> String:
     var out = List[UInt8](capacity=len(bytes))
     for index in range(len(bytes) - 1, -1, -1):
         out.append(bytes[index])
-    return String(unsafe_from_utf8=out^)
+    return String(unsafe_from_utf8=out)
 
 
 def scores(model: Model, reference: String, query: String) -> List[Int]:

@@ -224,7 +224,7 @@ def reverse_complement(sequence: String) -> String:
         elif letter == UInt8(ord("G")):
             letter = UInt8(ord("C"))
         out.append(letter)
-    return String(unsafe_from_utf8=out^)
+    return String(unsafe_from_utf8=out)
 
 
 def better(first: Alignment, second: Alignment, scored: Bool) -> Bool:

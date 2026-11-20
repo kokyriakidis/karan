@@ -234,7 +234,7 @@ struct LongAligner(Movable):
         self,
         reference_length: Int,
         query_length: Int,
-        seeds: Span[Seed, _],
+        seeds: ImmSpan[Seed, _],
         preset: LongPreset,
         name_hash: UInt32 = 0,
     ) raises AlignmentError -> List[LongChain]:
@@ -255,9 +255,9 @@ struct LongAligner(Movable):
 
     def align(
         mut self,
-        reference: Span[UInt8, _],
-        query: Span[UInt8, _],
-        seeds: Span[Seed, _],
+        reference: ImmSpan[UInt8, _],
+        query: ImmSpan[UInt8, _],
+        seeds: ImmSpan[Seed, _],
         preset: LongPreset,
         name_hash: UInt32 = 0,
         repeat_length: Int = 0,
@@ -268,11 +268,11 @@ struct LongAligner(Movable):
         as minimap2 breaks them for that name; `repeat_length`, the query letters under seeds left out as too
         frequent (minimap2's `rep_len`), lowers mapping qualities as minimap2's does.
 
-        Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a byte other than the codes 0
-        to 4 in either sequence, a sequence past `MAX_LONG_LENGTH` or a seed outside 1 to 255 letters inside both
-        (`check_inputs`)."""
+        Raises an `AlignmentError` on a preset minimap2 refuses (`LongPreset.check`), a sequence longer than
+        2^31 - 1 letters, a seed outside 1 to 255 letters inside both sequences, or a byte other than the codes 0 to 4
+        in the query or in the stretch of the reference an alignment reads."""
         preset.check()
-        check_inputs(reference, query, seeds)
+        check_inputs(len(reference), query, seeds)
         var qlen = len(query)
         var out = List[LongAlignment]()
         comptime if LONG_TRACE:
