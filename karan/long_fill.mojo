@@ -598,7 +598,11 @@ def align1(
         cnt1 = ends[1]
     filter_bad_seeds(as1, cnt1, a, 10, 40, preset.max_gap >> 1, 10)
     filter_bad_seeds_alt(as1, cnt1, a, 30, preset.max_gap >> 1)
-    cnt1 = step_over_unordered(as1, cnt1, a)
+    var ordered = step_over_unordered(as1, cnt1, a)
+    comptime if LONG_TRACE:
+        if ordered != cnt1:
+            trace(String(t"step_over_unordered\tregion={r.id}\tanchors={cnt1}\tkept_through={ordered}"))
+    cnt1 = ordered
     var start = adjust_minier(a[as1])
     var rs = start[0]
     var qs = start[1]
@@ -675,9 +679,8 @@ def align1(
 
     if qs > 0 and rs > 0:
         # The left extension, both pieces reversed, gaps as late as the score allows (early once turned back).
-        var qrev = List[UInt8](
-            capacity=max(qs - qs0, 0)
-        )  # empty, as the C's negative length, when unequal spans put qs0 past qs
+        # Unequal spans can put qs0 past qs: the piece is then empty, as the C's negative length leaves KSW2 nothing.
+        var qrev = List[UInt8](capacity=max(qs - qs0, 0))
         for index in range(qs - 1, qs0 - 1, -1):
             qrev.append(qseq_all[index])
         var trev = List[UInt8](capacity=rs - rs0)

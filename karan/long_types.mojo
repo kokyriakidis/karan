@@ -12,8 +12,9 @@ from .errors import AlignmentError
 comptime LONG_TRACE = is_defined["KARAN_LONG_TRACE"]()
 """Whether this build traces `LongAligner`, built with `-D KARAN_LONG_TRACE` (`pixi run build-long-trace`): a line to
 standard error for each stage of each query, tab-separated, its first field the minimap2 function the stage ports
-(`mm_gen_regs`, `mm_align1:fill`, `mm_filter_regs`, ...), so two runs' traces diff to the first stage that parts. A
-normal build folds every trace away."""
+(`mm_gen_regs`, `mm_align1:fill`, `mm_filter_regs`, ...), so two runs' traces diff to the first stage that parts.
+Lines carry no query name, only a `query` line before each query's stages, so trace one thread. A normal build folds
+every trace away."""
 
 
 def trace(line: String):

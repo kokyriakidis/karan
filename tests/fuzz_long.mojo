@@ -4,12 +4,14 @@
 `pixi run fuzz-long [cases] [seed]`: `LongAligner` on random references (a tandem array in random flanks) and queries
 cut from them (substitutions, indels, inverted stretches, either strand), seeded with minimap2's minimizers and with
 random valid seeds of every span from 1 to 255 on both strands, under every preset. Built with `-D ASSERT=all`, so a
-read outside any sequence stops it; it checks that nothing does, not what the alignments are.
+read outside any sequence stops it. Each case is aligned again with one byte of the reference made no code: the call
+must raise, or the byte lay outside every stretch it reads and the alignments must be the same. Seed 2 at 500 cases
+(CI's) catches each of the three reads past a sequence that unequal spans once caused.
 """
 
 from std.random import random_ui64, seed
 from std.sys import argv
-from karan import LongAligner, LongPreset, Seed, encode_nt4
+from karan import ErrorKind, LongAligner, LongAlignment, LongPreset, Seed, encode_nt4
 from mm2_seeds import Mm2Index, mm2_seeds
 
 
@@ -34,6 +36,35 @@ def comp(c: UInt8) -> UInt8:
     return UInt8(ord("A"))
 
 
+def same(left: List[LongAlignment], right: List[LongAlignment]) -> Bool:
+    """Whether two runs gave the same alignments, field by field."""
+    if len(left) != len(right):
+        return False
+    for index in range(len(left)):
+        ref x = left[index]
+        ref y = right[index]
+        if (
+            x.query_start != y.query_start
+            or x.query_end != y.query_end
+            or x.reference_start != y.reference_start
+            or x.reference_end != y.reference_end
+            or x.reverse != y.reverse
+            or x.cigar != y.cigar
+            or x.chain_score != y.chain_score
+            or x.secondary_score != y.secondary_score
+            or x.score != y.score
+            or x.dp_max != y.dp_max
+            or x.mapq != y.mapq
+            or x.matches != y.matches
+            or x.block_length != y.block_length
+            or x.primary != y.primary
+            or x.supplementary != y.supplementary
+            or x.inversion != y.inversion
+        ):
+            return False
+    return True
+
+
 def main() raises:
     var args = argv()
     var cases = Int(args[1]) if len(args) > 1 else 1000
@@ -47,6 +78,8 @@ def main() raises:
     ]
     var aligner = LongAligner()
     var total = 0
+    var caught = 0
+    var unread = 0
     for ci in range(cases):
         # A reference with a tandem array, a query from a piece of it: mutated, with indels, an inverted stretch.
         var unit = rnd(r(20, 400))
@@ -91,6 +124,25 @@ def main() raises:
         var reference = encode_nt4(Span(ref_text))
         var query = encode_nt4(Span(q_text))
         var preset = presets[ci % len(presets)]
-        total += len(aligner.align(Span(reference), Span(query), Span(seeds), preset, UInt32(ci)))
+        var found = aligner.align(Span(reference), Span(query), Span(seeds), preset, UInt32(ci))
+        total += len(found)
         _ = aligner.chains(len(reference), len(query), Span(seeds), preset)
-    print("cases", cases, "alignments", total)
+        # One byte that is no code, anywhere in the reference: the call raises, or the byte lay outside every
+        # stretch it reads and the alignments are the same.
+        var poisoned = reference.copy()
+        poisoned[r(0, len(poisoned) - 1)] = 9
+        var raised = False
+        var changed = False
+        try:
+            changed = not same(found, aligner.align(Span(poisoned), Span(query), Span(seeds), preset, UInt32(ci)))
+        except e:
+            if e.kind != ErrorKind.UNKNOWN_SYMBOL:
+                raise Error(String(e))
+            raised = True
+        if changed:
+            raise Error(String(t"case {ci}: a byte outside the checked stretches changed the alignments"))
+        if raised:
+            caught += 1
+        else:
+            unread += 1
+    print("cases", cases, "alignments", total, "poisoned bytes caught", caught, "unread", unread)
